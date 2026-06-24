@@ -9,6 +9,7 @@
 %token STRUCT UNION ENUM
 %token ELLIPSIS
 
+%left LOWEST_LEFT_PRECEDENCE
 %left OR_OP
 %left AND_OP
 %left OR
@@ -183,10 +184,27 @@ storage_class
     | STATIC
     ;
 
+/*Missing: mut volatile u32 & -> (u32 &) mut volatile
+ this is similar to the C exception except it doesn't move one to the right, 
+ it captures the whole type*/
 type
-    : base_type
-    | type_qualifier
+    : concrete_type
+    | type type_qualifier
     ;
+
+concrete_type
+    : base_type
+    | type '&'
+    | type '[' constant_expression ']'
+    | type '(' '&' ')' '(' parameter_type_list ')'
+    ;
+
+
+type_qualifier
+	: MUT
+	| RESTRICT
+	| VOLATILE
+	;
 
 base_type
 	: VOID
@@ -194,6 +212,21 @@ base_type
 	| U8 | I8 | U16 | I16 | U32 | I32 | U64 | I64 | F32 | F64
 	| struct_or_union_specifier
 	| enum_specifier
+	;
+
+parameter_type_list
+	: parameter_list
+	| parameter_list ',' ELLIPSIS
+	;
+
+parameter_list
+	: parameter_declaration
+	| parameter_list ',' parameter_declaration
+	;
+
+parameter_declaration
+	: type
+	| type IDENTIFIER
 	;
 
 
@@ -227,12 +260,6 @@ enumerator_list
 enumerator
 	: IDENTIFIER
 	| IDENTIFIER '=' constant_expression
-	;
-
-type_qualifier
-	: MUT
-	| RESTRICT
-	| VOLATILE
 	;
 
 statement
@@ -295,7 +322,6 @@ jump_statement
 
 translation_unit
 	: declaration
-	| compound_statement /*TODO: remove this and allow block literals*/
 	| translation_unit declaration
 	;
 
