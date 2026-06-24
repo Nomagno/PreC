@@ -50,6 +50,7 @@ postfix_expression
 	| postfix_expression DEC_OP
 	| '(' type ')' '{' initializer_list '}'
 	| '(' type ')' '$' compound_statement
+	| '(' type ')' DEFAULT
 	;
 
 argument_expression_list
@@ -103,8 +104,8 @@ conditional_expression
 	;
 
 /*Missing: check it's actually constant lol*/
-constant_expression :
-    | conditional_expression
+constant_expression
+    : conditional_expression
     ;
 
 assignment_expression
@@ -117,6 +118,22 @@ expression
 	| expression ',' assignment_expression
 	;
 
+
+const_declaration
+    : type ';'
+    | type const_var_list ';'
+    ;
+
+const_var_list
+    : const_id_decl
+    | const_var_list ',' const_id_decl
+    ;
+
+const_id_decl
+    : IDENTIFIER
+    | IDENTIFIER '=' constant_expression;
+
+
 declaration
     : storage_class declaration
     | type ';'
@@ -128,26 +145,15 @@ var_list
     | var_list ',' id_decl
     ;
 
-id_decl :
-    IDENTIFIER
+id_decl
+    : IDENTIFIER
     | IDENTIFIER '=' initializer;
 
 initializer
     : assignment_expression
     | '{' initializer_list '}'
     | '$' compound_statement
-    ;
-
-storage_class
-    :
-    /*| empty*/
-    EXTERN
-    | STATIC
-    ;
-
-type
-    : base_type
-    | type_qualifier
+    | DEFAULT
     ;
 
 initializer_list
@@ -171,30 +177,40 @@ designator
 	| '.' IDENTIFIER
 	;
 
+storage_class
+    :
+    EXTERN
+    | STATIC
+    ;
+
+type
+    : base_type
+    | type_qualifier
+    ;
+
 base_type
 	: VOID
 	| BOOL
-    | U8
-    | I8
-    | U16
-    | I16
-    | U32
-    | I32
-    | U64
-    | I64
-    | F32
-    | F64
+	| U8 | I8 | U16 | I16 | U32 | I32 | U64 | I64 | F32 | F64
 	| struct_or_union_specifier
 	| enum_specifier
 	;
 
+
 struct_or_union_specifier
-	: struct_or_union /*TODO: COMPLETE*/
+	: struct_or_union IDENTIFIER '{' struct_declaration_list '}'
+	| struct_or_union '{' struct_declaration_list '}'
+	| struct_or_union IDENTIFIER
 	;
 
 struct_or_union
 	: STRUCT
 	| UNION
+	;
+
+struct_declaration_list
+	: const_declaration
+	| struct_declaration_list const_declaration
 	;
 
 enum_specifier
