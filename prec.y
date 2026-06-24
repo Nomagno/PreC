@@ -195,6 +195,7 @@ type
 concrete_type
     : base_type
     | type '&'
+    | type '[' ']'
     | type '[' constant_expression ']'
     | type '(' '&' ')' '(' parameter_type_list ')'
     ;
