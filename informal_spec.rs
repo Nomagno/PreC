@@ -32,7 +32,7 @@ mut i32 (&)(i32 a, i32 b) add = ${ return a+b; };
 // Have to use a new type of code-valued compound literal because no parameter names specified
 i32 (&)(i32, i32) sub = (i32 (&)(i32 a, i32 b)) ${ return a-b; };
 
-i32 (&)(void) main = {
+i32 (&)(void) main = ${
     i32 x = sub(1, 3); // value: -2
 
     mut i32 y = add(1, 3); // value: 4
