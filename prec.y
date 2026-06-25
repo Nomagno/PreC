@@ -189,20 +189,26 @@ storage_class
     | STATIC
     ;
 
-/*Missing: mut volatile u32 & -> (u32 &) mut volatile
- this is similar to the C exception except it doesn't move one to the right, 
+/*Type is a separate rule from regular_type because:
+ mut volatile u32 & -> (u32 &) mut volatile
+ this is similar to the C exception except it doesn't move one to the right,
  it captures the whole type*/
 type
+    : regular_type
+    | type_qualifier type
+    ;
+
+regular_type
     : concrete_type
-    | type type_qualifier
+    | regular_type type_qualifier
     ;
 
 concrete_type
     : base_type
-    | type '&'
-    | type '[' ']'
-    | type '[' constant_expression ']'
-    | type '(' '&' ')' '(' parameter_type_list ')'
+    | regular_type '&'
+    | regular_type '[' ']'
+    | regular_type '[' constant_expression ']'
+    | regular_type '(' '&' ')' '(' parameter_type_list ')'
     ;
 
 
