@@ -17,7 +17,7 @@
 // - trailing commas allowed everywhere reasonable
 // - Structs can have default values accessed through a new ``default'' value:
 //    struct search_result { i32 x = -1; };
-//    struct search_result foo = default;
+//    struct search_result foo = (struct search_result)default;
 
 // - operators are now overloading-free:
 //      | -> OR

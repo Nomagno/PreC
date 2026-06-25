@@ -159,7 +159,6 @@ initializer
     | '{' initializer_list '}'
     | '{' initializer_list ',' '}'
     | '$' compound_statement
-    | DEFAULT
     ;
 
 initializer_list
