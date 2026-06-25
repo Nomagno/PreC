@@ -45,11 +45,13 @@ postfix_expression
 	| postfix_expression '[' expression ']'
 	| postfix_expression '(' ')'
 	| postfix_expression '(' argument_expression_list ')'
+	| postfix_expression '(' argument_expression_list ',' ')'
 	| postfix_expression '.' IDENTIFIER
 	| postfix_expression PTR_OP IDENTIFIER
 	| postfix_expression INC_OP
 	| postfix_expression DEC_OP
 	| '(' type ')' '{' initializer_list '}'
+	| '(' type ')' '{' initializer_list ',' '}'
 	| '(' type ')' '$' compound_statement
 	| '(' type ')' DEFAULT
 	;
@@ -123,6 +125,7 @@ expression
 const_declaration
     : type ';'
     | type const_var_list ';'
+    | type const_var_list ',' ';'
     ;
 
 const_var_list
@@ -139,6 +142,7 @@ declaration
     : storage_class declaration
     | type ';'
     | type var_list ';'
+    | type var_list ',' ';'
     ;
 
 var_list
@@ -153,6 +157,7 @@ id_decl
 initializer
     : assignment_expression
     | '{' initializer_list '}'
+    | '{' initializer_list ',' '}'
     | '$' compound_statement
     | DEFAULT
     ;
@@ -216,8 +221,11 @@ base_type
 	;
 
 parameter_type_list
-	: parameter_list
+	:
+	| parameter_list
+	| parameter_list ','
 	| parameter_list ',' ELLIPSIS
+	| parameter_list ',' ELLIPSIS ','
 	;
 
 parameter_list
@@ -249,7 +257,9 @@ struct_declaration_list
 
 enum_specifier
 	: ENUM '{' enumerator_list '}'
+	| ENUM '{' enumerator_list ',' '}'
 	| ENUM IDENTIFIER '{' enumerator_list '}'
+	| ENUM IDENTIFIER '{' enumerator_list ',' '}'
 	| ENUM IDENTIFIER
 	;
 
