@@ -44,7 +44,7 @@ i32 (&)(void) main = ${
     mut i32 y = add(1, 3); // value: 4
 
     // redefine add to multiply by two after adding
-    add = (i32 (&)(i32 j, i32 k)) ${ return 2*(j+k); }
+    add = (i32 (&)(i32 j, i32 k)) ${ return 2*(j+k); };
 
     y = add(1, 3); // value: 8
     
