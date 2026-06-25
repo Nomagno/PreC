@@ -50,10 +50,10 @@ postfix_expression
 	| postfix_expression PTR_OP IDENTIFIER
 	| postfix_expression INC_OP
 	| postfix_expression DEC_OP
-	| '(' type ')' '{' initializer_list '}'
-	| '(' type ')' '{' initializer_list ',' '}'
-	| '(' type ')' '$' compound_statement
-	| '(' type ')' DEFAULT
+	| '<' type '>' '{' initializer_list '}'
+	| '<' type '>' '{' initializer_list ',' '}'
+	| '<' type '>' '$' compound_statement
+	| '<' type '>' DEFAULT
 	;
 
 argument_expression_list
@@ -71,12 +71,12 @@ unary_expression
 	| '~' cast_expression
 	| '!' cast_expression
 	| SIZEOF unary_expression
-	| SIZEOF '(' type ')'
+	| SIZEOF '<' type '>'
 	;
 
 cast_expression
 	: unary_expression
-	| '(' type ')' cast_expression
+	| '<' type '>' cast_expression
 	;
 
 arithmetic_expression
@@ -188,26 +188,18 @@ storage_class
     | STATIC
     ;
 
-/*Type is a separate rule from regular_type because:
- mut volatile u32 & -> (u32 &) mut volatile
- this is similar to the C exception except it doesn't move one to the right,
- it captures the whole type*/
 type
-    : regular_type
-    | type_qualifier type
-    ;
-
-regular_type
-    : concrete_type
-    | regular_type type_qualifier
+    : '(' type ')'
+    | concrete_type
+    | type type_qualifier
     ;
 
 concrete_type
     : base_type
-    | regular_type '&'
-    | regular_type '[' ']'
-    | regular_type '[' constant_expression ']'
-    | regular_type '(' '&' ')' '(' parameter_type_list ')'
+    | type '&'
+    | type '[' ']'
+    | type '[' constant_expression ']'
+    | type '(' '&' ')' '(' parameter_type_list ')'
     ;
 
 

@@ -7,6 +7,11 @@
 // - constness by default, `mut` to mutate
 // - struct autoderreference: no need to do a->x, just do a.x
 // - structs are zero-initialized
+// - type casts and all syntactically similar operations now use angular brackets:
+//    - type casts <type>expression
+//    - default initializers <type>default
+//    - compound literals <type> { ... }
+//    - function literals <type> ${ ... }
 
 // - no typedef:
 //      struct vector { i32 x, y; };
@@ -17,7 +22,7 @@
 // - trailing commas allowed everywhere reasonable
 // - Structs can have default values accessed through a new ``default'' value:
 //    struct search_result { i32 x = -1; };
-//    struct search_result foo = (struct search_result)default;
+//    struct search_result foo = <struct search_result>default;
 
 // - operators are now overloading-free:
 //      | -> OR
@@ -33,20 +38,20 @@
 //
 
 // Parameter names used for initialiation, but otherwise discarded from the type as in regular C
-mut i32 (&)(i32 a, i32 b) add = ${ return a+b; };
+i32 (&)(i32 a, i32 b) mut add = ${ return a+b; };
 
 // Have to use a new type of code-valued compound literal because no parameter names specified
-i32 (&)(i32, i32) sub = (i32 (&)(i32 a, i32 b)) ${ return a-b; };
+i32 (&)(i32, i32) sub = <i32 (&)(i32 a, i32 b)> ${ return a-b; };
 
 i32 (&)(void) main = ${
     i32 x = sub(1, 3); // value: -2
 
-    mut i32 y = add(1, 3); // value: 4
+    i32 mut y = add(1, 3); // value: 4
 
     // redefine add to multiply by two after adding
-    add = (i32 (&)(i32 j, i32 k)) ${ return 2*(j+k); };
+    add = <i32 (&)(i32 j, i32 k)> ${ return 2*(j+k); };
 
     y = add(1, 3); // value: 8
 
     return 0;
-}
+};
