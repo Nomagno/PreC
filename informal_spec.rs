@@ -7,7 +7,7 @@
 // - constness by default, `mut` to mutate
 // - struct autoderreference: no need to do a->x, just do a.x
 // - structs are zero-initialized
- 
+
 // - no typedef:
 //      struct vector { i32 x, y; };
 //      MUST be referred to as ``struct vector''
@@ -18,7 +18,7 @@
 // - Structs can have default values accessed through a new ``default'' value:
 //    struct search_result { i32 x = -1; };
 //    struct search_result foo = default;
- 
+
 // - operators are now overloading-free:
 //      | -> OR
 //      ^ -> XOR
@@ -31,7 +31,7 @@
 // - +=, *=, etc, all gone
 // - keywords gone for obvious reasons: auto, register, _Imaginary, _Complex
 //
- 
+
 // Parameter names used for initialiation, but otherwise discarded from the type as in regular C
 mut i32 (&)(i32 a, i32 b) add = ${ return a+b; };
 
@@ -47,6 +47,6 @@ i32 (&)(void) main = ${
     add = (i32 (&)(i32 j, i32 k)) ${ return 2*(j+k); };
 
     y = add(1, 3); // value: 8
-    
+
     return 0;
 }
