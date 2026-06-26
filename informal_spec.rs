@@ -38,7 +38,7 @@
 //
 
 // Parameter names used for initialiation, but otherwise discarded from the type as in regular C
-i32 (&)(i32 a, i32 b) mut add = ${ return a+b; };
+mut i32 (&)(i32 a, i32 b) add = ${ return a+b; };
 
 // Have to use a new type of code-valued compound literal because no parameter names specified
 i32 (&)(i32, i32) sub = <i32 (&)(i32 a, i32 b)> ${ return a-b; };
@@ -46,7 +46,7 @@ i32 (&)(i32, i32) sub = <i32 (&)(i32 a, i32 b)> ${ return a-b; };
 i32 (&)(void) main = ${
     i32 x = sub(1, 3); // value: -2
 
-    i32 mut y = add(1, 3); // value: 4
+    mut i32 y = add(1, 3); // value: 4
 
     // redefine add to multiply by two after adding
     add = <i32 (&)(i32 j, i32 k)> ${ return 2*(j+k); };
