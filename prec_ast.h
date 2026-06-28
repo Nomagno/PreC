@@ -79,8 +79,18 @@ struct Expr {
         int int_num;
     };
 };
+struct ConstExpr;
+
+struct DesignatorList {
+    union {
+        char *access;
+        struct ConstExpr *index;
+    };
+    struct DesignatorList *next;
+};
 
 struct InitializerList {
+    struct DesignatorList *designation;
     struct Initializer *current;
     struct InitializerList *next;
 };
