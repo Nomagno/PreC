@@ -47,11 +47,6 @@ enum ExprType {
     CompoundLiteral='l',
 };
 
-struct Block;
-struct StructOrUnionDef;
-struct EnumDef;
-struct TypeParamList;
-
 struct Type;
 struct Initializer;
 
@@ -83,6 +78,11 @@ struct Expr {
         float fp_num;
         int int_num;
     };
+};
+
+struct InitializerList {
+    struct Initializer *current;
+    struct InitializerList *next;
 };
 
 struct Initializer {
@@ -118,6 +118,10 @@ enum TypeSort {
     u8=C('u',8),
 };
 
+struct Block;
+struct ConstDeclarationList;
+struct EnumeratorList;
+struct TypeParamList;
 
 struct Type {
     enum TypeSort tag;
@@ -128,15 +132,13 @@ struct Type {
         } compound;
 
         struct {
-            enum TypeOp op;
             char *name;
-            struct StructOrUnionDef *def;
+            struct ConstDeclarationList *declarations;
         } struct_or_union_def;
 
         struct {
-            enum TypeOp op;
             char *name;
-            struct EnumDef *def;
+            struct EnumeratorList *values;
         } enum_def;
 
         char *c_type;
@@ -146,4 +148,86 @@ struct Type {
             struct TypeParamList *param_list;
         } fun_pointer;
     };
+};
+
+struct TypeParamList {
+    // if all are NULL: variadic ender u32(&)(x, y, ...)
+    struct Type *val_type;
+    char *val_name;
+    struct TypeParamsList *next;
+};
+
+struct EnumeratorList {
+    struct EnumValue *val;
+    struct EnumeratorList *next;
+};
+
+struct EnumValue {
+    char *name;
+    _Bool has_val;
+    int val;
+};
+
+
+struct ConstExpr {
+    struct Expr *x;
+};
+
+struct ConstVarList {
+    char *var_name;
+    struct ConstantExpression *var_val;
+    struct ConstVarList *next;
+};
+
+struct ConstDeclaration {
+    struct Type *type;
+    struct ConstVarList *vars;
+};
+
+struct ConstDeclarationList {
+    struct ConstDeclaration *decl;
+    struct ConstDeclarationList *next;
+};
+
+
+enum StorageClass {
+    Static='s',
+    Extern='e',
+};
+
+struct VarList {
+    char *var_name;
+    struct Initializer *var_val;
+    struct VarList *next;
+};
+
+struct Declaration {
+    enum StorageClass *class;
+    struct Type *type;
+    struct VarList *vars;
+};
+
+
+// Top level node
+struct DeclarationList {
+    struct Declaration *decl;
+    struct DeclarationList *next;
+};
+
+
+struct Block {
+    struct BlockList *contents;
+};
+
+struct BlockList {
+    enum { Statement='s', Declaration='d' } tag;
+    union {
+        struct Statement *stat;
+        struct Declaration *decl;
+    };
+    struct BlockList *next;
+};
+
+struct Statement {
+    
 };
