@@ -217,14 +217,6 @@ struct Declaration {
     struct VarList *vars;
 };
 
-
-// Top level node
-struct DeclarationList {
-    struct Declaration *decl;
-    struct DeclarationList *next;
-};
-
-
 struct Block {
     struct BlockList *contents;
 };
@@ -238,6 +230,82 @@ struct BlockList {
     struct BlockList *next;
 };
 
+enum StatementType {
+    Labeled='l',
+    Block='b',
+    Expression='e',
+    Selection='s',
+    Iteration='i',
+    Jump='j',
+};
+
 struct Statement {
-    
+    enum StatementType tag;
+    union {
+        struct LabeledStatement *l;
+        struct Block *b;
+        struct Expr *e; // NULL for ';'
+        struct SelectionStatement *s;
+        struct IterationStatement *i;
+        struct JumpStatement *j;
+    };
+};
+
+struct SelectionStatement {
+    enum { If='i', IfElse='e', Switch='s' } tag;
+    union {
+        struct {
+            struct Expr *clause;
+            struct Statement *action;
+        } simple_if;
+        struct {
+            struct Expr *clause;
+            struct Statement *action_true;
+            struct Statement *action_false;
+        } if_else;
+        struct {
+            struct Expr *clause;
+            struct Statement *block;
+        } switch_stat;
+    };
+};
+
+struct JumpStatement {
+    enum { Return='r', Continue='c', Goto='g', Break='b'} tag;
+    union {
+        struct {
+            struct Expr* expr;
+        } return_stat;
+        struct {
+            char *label_name;
+        } goto_stat;
+    };
+};
+
+struct LabeledStatement {
+    enum { Case='c', Default_Label='d', Label='l' } tag;
+    char *label_name; // For the Label case
+    struct ConstExpr *case_expr; // For the Case case
+    struct Statement *stat; // For all cases
+};
+
+struct IterationStatement {
+    enum { While='w', DoWhile='d', For='f' } tag;
+    union {
+        struct {
+            struct Expr *expr;
+            struct Statement *stat;
+        } while_dowhile_stat;
+        struct {
+            struct Expr *initialization;
+            struct Expr *loop_action;
+            struct Expr *loop_condition;
+        } for_stat;
+    };
+};
+
+// Top level node
+struct DeclarationList {
+    struct Declaration *decl;
+    struct DeclarationList *next;
 };
