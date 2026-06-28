@@ -3,4 +3,4 @@ prec: prec.l prec.y
 	bison -dy prec.y --report=states,itemsets -Wno-yacc
 	gcc y.tab.c lex.yy.c -o prec
 clean:
-	rm -rf *.c *.h prec y.output
+	rm -f prec lex.yy.c y.tab.c y.tab.h y.output
