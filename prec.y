@@ -50,9 +50,7 @@ postfix_expression
 	| postfix_expression PTR_OP IDENTIFIER
 	| postfix_expression INC_OP
 	| postfix_expression DEC_OP
-	| '<' type '>' '{' initializer_list '}'
-	| '<' type '>' '{' initializer_list ',' '}'
-	| '<' type '>' '$' compound_statement
+	| '<' type '>' compound_literal_initializer
 	| '<' type '>' DEFAULT
 	;
 
@@ -161,11 +159,16 @@ initializer
     | '$' compound_statement
     ;
 
+compound_literal_initializer
+    : '{' initializer_list '}'
+    | '{' initializer_list ',' '}'
+    | '$' compound_statement
+    ;
+
 initializer_list
 	: initializer
 	| designation initializer
 	| initializer_list ',' initializer
-	| initializer_list ',' designation initializer
 	;
 
 designation
@@ -201,6 +204,7 @@ regular_type
 
 concrete_type
     : base_type
+    | '@' IDENTIFIER /*Itentifier types are only for use with #c_include*/
     | regular_type '&'
     | regular_type '[' ']'
     | regular_type '[' constant_expression ']'
@@ -260,9 +264,9 @@ struct_declaration_list
 enum_specifier
 	: ENUM '{' enumerator_list '}'
 	| ENUM '{' enumerator_list ',' '}'
+	| ENUM IDENTIFIER
 	| ENUM IDENTIFIER '{' enumerator_list '}'
 	| ENUM IDENTIFIER '{' enumerator_list ',' '}'
-	| ENUM IDENTIFIER
 	;
 
 enumerator_list

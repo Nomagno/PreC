@@ -1,10 +1,11 @@
 // Preprocessable C (PreC):
 // Following changes to C99:
 // - uses the C preprocessor with no changes
-// - can use `#c_include` to use C headers, full C ABI compatibility is preserved
+// - can use ``#c_include'' to use C headers, full C ABI compatibility is preserved
+// - to refer to typedef'ed types from a ``#c_include'' use @Typename
 // - full list of primitive types: bool, u8, i8, u16, i16, u32, i32, u64, i64, f32, f64
 // - NO type coercion at all, must explicitly cast
-// - constness by default, `mut` to mutate
+// - constness by default, ``mut'' to mutate
 // - struct autoderreference: no need to do a->x, just do a.x
 // - structs are zero-initialized
 // - type casts and all syntactically similar operations now use angular brackets:
