@@ -39,8 +39,10 @@ enum UnOp {
 enum ExprType {
     Unary='u',
     Binary='b',
+    FunctionCall='f',
     Identifier='i',
     String='s',
+    Ternary='c',
     Constant='c',
     Cast='<',
     Default='d',
@@ -69,17 +71,33 @@ struct Expr {
             struct Expr *e;
         } cast;
 
+        struct {
+            struct Expr *cond;
+            struct Expr *if_true;
+            struct Expr *if_false;
+        } ternary;
+
+        struct {
+            struct Expr *callee;
+            struct ArgumentExpressionList *args;
+        } function_call;
+
         struct Initializer *compound_literal;
 
         struct Type *default_initializer;
 
         char *string;
         char *identifier;
-        float fp_num;
-        int int_num;
+        double fp_num;
+        intmax_t int_num;
     };
 };
 struct ConstExpr;
+
+struct ArgumentExpressionList {
+    struct Expr *expr;
+    struct ArgumentExpressionList *next;
+};
 
 struct DesignatorList {
     union {
@@ -305,7 +323,11 @@ struct IterationStatement {
 };
 
 // Top level node
-struct DeclarationList {
-    struct Declaration *decl;
+struct TopLevel {
+    enum {CInclude='c', Decl='d'} tag;
+    union {
+        struct Declaration *decl;
+        char *c_include;
+    };
     struct DeclarationList *next;
 };

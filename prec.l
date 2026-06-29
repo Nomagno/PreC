@@ -22,6 +22,7 @@ void comment(void);
 "//"[^\n]*              { /* consume //-comment */ }
 
 
+"#c_include"    { count(); return(C_INCLUDE); }
 "not"		    { count(); return(NOT); }
 "and"		    { count(); return(AND); }
 "xor"	    	{ count(); return(XOR); }
@@ -41,6 +42,7 @@ void comment(void);
 "restrict"		{ count(); return(RESTRICT); }
 "return"		{ count(); return(RETURN); }
 "sizeof"		{ count(); return(SIZEOF); }
+"typeof"		{ count(); return(TYPEOF); }
 "static"		{ count(); return(STATIC); }
 "struct"		{ count(); return(STRUCT); }
 "switch"		{ count(); return(SWITCH); }
@@ -61,17 +63,17 @@ void comment(void);
 
 {L}({L}|{D})*		{ count(); return(IDENTIFIER); }
 
-0[xX]{H}+{IS}?		{ count(); return(CONSTANT); }
-0[0-7]*{IS}?		{ count(); return(CONSTANT); }
-[1-9]{D}*{IS}?		{ count(); return(CONSTANT); }
-L?'(\\.|[^\\'\n])+'	{ count(); return(CONSTANT); }
+0[xX]{H}+{IS}?		{ count(); return(INT_CONSTANT); }
+0[0-7]*{IS}?		{ count(); return(INT_CONSTANT); }
+[1-9]{D}*{IS}?		{ count(); return(INT_CONSTANT); }
+L?'(\\.|[^\\'\n])+'	{ count(); return(INT_CONSTANT); }
 
-{D}+{E}{FS}?		{ count(); return(CONSTANT); }
-{D}*"."{D}+{E}?{FS}?	{ count(); return(CONSTANT); }
-{D}+"."{D}*{E}?{FS}?	{ count(); return(CONSTANT); }
-0[xX]{H}+{P}{FS}?	{ count(); return(CONSTANT); }
-0[xX]{H}*"."{H}+{P}{FS}?     { count(); return(CONSTANT); }
-0[xX]{H}+"."{H}*{P}{FS}?     { count(); return(CONSTANT); }
+{D}+{E}{FS}?		{ count(); return(FLOAT_CONSTANT); }
+{D}*"."{D}+{E}?{FS}?	{ count(); return(FLOAT_CONSTANT); }
+{D}+"."{D}*{E}?{FS}?	{ count(); return(FLOAT_CONSTANT); }
+0[xX]{H}+{P}{FS}?	{ count(); return(FLOAT_CONSTANT); }
+0[xX]{H}*"."{H}+{P}{FS}?     { count(); return(FLOAT_CONSTANT); }
+0[xX]{H}+"."{H}*{P}{FS}?     { count(); return(FLOAT_CONSTANT); }
 
 
 L?\"(\\.|[^\\"\n])*\"	{ count(); return(STRING_LITERAL); }

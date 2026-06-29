@@ -1,6 +1,57 @@
 %expect 1
 
-%token IDENTIFIER CONSTANT STRING_LITERAL SIZEOF
+%{
+    #include "prec_ast.h"
+    int yylex(void);
+    int yyerror(const char *s);
+%}
+
+%union {
+    struct TopLevel *top_level;
+    struct Declaration *declaration;
+    struct VarList *var_list;
+
+    struct ConstVarList *const_var_list;
+    struct ConstDeclaration *const_declaration;
+    struct ConstDeclarationList *const_declaration_list;
+
+    struct Expr *expression;
+    struct ConstExpr *const_expression;
+
+    struct Statement *stat;
+    struct SelectionStatement *selection_stat;
+    struct LabeledStatement *labeled_stat;
+    struct IterationStatement *iteration_stat;
+    struct JumpStatement *jump_stat;
+
+    struct Block *block;
+    struct BlockList *block_list;
+
+    struct EnumValue *enum_val;
+    struct EnumeratorList *enum_list;
+
+    struct ArgumentExpressionList *arg_list;
+    struct TypeParamList *type_param_list;
+
+    struct Type *type;
+
+    struct DesignatorList *designator_list;
+    struct InitializerList *initializer_list;
+    struct Initializer *initializer;
+    
+
+    char *identifier;
+    char *string_literal;
+    double float_constant;
+    intmax_t int_constant;
+
+}
+
+%token <float_constant> FLOAT_CONSTANT
+%token <int_constant> INT_CONSTANT
+%token <identifier> IDENTIFIER
+%token <string_literal> STRING_LITERAL
+%token SIZEOF TYPEOF
 %token PTR_OP INC_OP DEC_OP LEFT_OP RIGHT_OP LE_OP GE_OP EQ_OP NE_OP
 %token AND_OP OR_OP
 
@@ -8,6 +59,7 @@
 %token BOOL U8 I8 U16 I16 U32 I32 U64 I64 F32 F64 VOID
 %token STRUCT UNION ENUM
 %token ELLIPSIS
+%token C_INCLUDE
 
 %left LOWEST_LEFT_PRECEDENCE
 %left OR_OP
@@ -26,16 +78,12 @@
 
 %start translation_unit
 
-%{
-    int yylex(void);
-    int yyerror(const char *s);
-%}
-
 %%
 
 primary_expression
 	: IDENTIFIER
-	| CONSTANT
+	| INT_CONSTANT
+	| FLOAT_CONSTANT
 	| STRING_LITERAL
 	| '(' expression ')'
 	;
@@ -204,6 +252,8 @@ regular_type
 
 concrete_type
     : base_type
+	| TYPEOF '(' expression ')'
+	| TYPEOF '(' type ')'
     | '@' IDENTIFIER /*Itentifier types are only for use with #c_include*/
     | regular_type '&'
     | regular_type '[' ']'
@@ -339,6 +389,7 @@ jump_statement
 
 translation_unit
 	: declaration
+	| C_INCLUDE STRING_LITERAL
 	| translation_unit declaration
 	;
 
