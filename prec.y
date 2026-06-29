@@ -51,7 +51,7 @@
 %token <int_constant> INT_CONSTANT
 %token <identifier> IDENTIFIER
 %token <string_literal> STRING_LITERAL
-%token SIZEOF TYPEOF
+%token SIZEOF
 %token PTR_OP INC_OP DEC_OP LEFT_OP RIGHT_OP LE_OP GE_OP EQ_OP NE_OP
 %token AND_OP OR_OP
 
@@ -252,8 +252,6 @@ regular_type
 
 concrete_type
     : base_type
-	| TYPEOF '(' expression ')'
-	| TYPEOF '(' type ')'
     | '@' IDENTIFIER /*Itentifier types are only for use with #c_include*/
     | regular_type '&'
     | regular_type '[' ']'

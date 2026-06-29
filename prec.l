@@ -42,7 +42,6 @@ void comment(void);
 "restrict"		{ count(); return(RESTRICT); }
 "return"		{ count(); return(RETURN); }
 "sizeof"		{ count(); return(SIZEOF); }
-"typeof"		{ count(); return(TYPEOF); }
 "static"		{ count(); return(STATIC); }
 "struct"		{ count(); return(STRUCT); }
 "switch"		{ count(); return(SWITCH); }

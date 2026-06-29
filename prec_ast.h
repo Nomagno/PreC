@@ -37,6 +37,7 @@ enum UnOp {
 };
 
 enum ExprType {
+    SizeofType='t',
     Unary='u',
     Binary='b',
     FunctionCall='f',
@@ -65,6 +66,10 @@ struct Expr {
             enum UnOp op;
             struct Expr *e;
         } unOp;
+
+        struct {
+            struct Type *type;
+        } sizeof_type;
 
         struct {
             struct Type *type;
