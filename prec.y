@@ -10,7 +10,9 @@
     struct TopLevel *top_level;
     struct Declaration *declaration;
     struct VarList *var_list;
-
+    struct VarDecl *var_decl;
+    
+    struct ConstVarDecl *const_var_decl;
     struct ConstVarList *const_var_list;
     struct ConstDeclaration *const_declaration;
     struct ConstDeclarationList *const_declaration_list;
@@ -26,26 +28,71 @@
 
     struct Block *block;
     struct BlockList *block_list;
+    struct BlockItem *block_item;
 
     struct EnumValue *enum_val;
     struct EnumeratorList *enum_list;
 
     struct ArgumentExpressionList *arg_list;
     struct TypeParamList *type_param_list;
+    struct TypeParam *type_param;
 
     struct Type *type;
 
     struct DesignatorList *designator_list;
     struct InitializerList *initializer_list;
     struct Initializer *initializer;
-    
+
+    enum StorageClass storage_class;
+    enum TypeOp type_operation;
 
     char *identifier;
     char *string_literal;
     double float_constant;
     intmax_t int_constant;
-
 }
+
+%type <expression> primary_expression postfix_expression unary_expression cast_expression arithmetic_expression conditional_expression assignment_expression expression
+%type <const_expression> constant_expression
+
+%type <const_var_decl> const_id_decl
+%type <const_var_list> const_var_list
+%type <const_declaration> const_declaration
+%type <const_declaration_list> struct_declaration_list
+
+%type <var_decl> id_decl
+%type <var_list> var_list
+%type <declaration> declaration
+
+%type <initializer> initializer compound_literal_initializer
+%type <initializer_list> initializer_list
+%type <designator_list> designation designator_list
+%type <designator> designator
+
+%type <stat> statement
+%type <expression> expression_statement
+%type <jump_stat> jump_statement
+%type <iteration_stat> iteration_statement
+%type <labeled_stat> labeled_statement
+%type <selection_stat> selection_statement
+
+%type <arg_list> argument_expression_list
+
+%type <block> compound_statement
+%type <block_list> block_item_list
+%type <block_list> block_item
+
+%type <storage_class> storage_class
+%type <type> type regular_type concrete_type base_type
+%type <type> enum_specifier
+%type <type> struct_or_union_specifier
+%type <type_operation> type_qualifier
+%type <type_param_list> parameter_type_list
+%type <type_param> parameter_declaration
+%type <enum_list> enumerator_list
+%type <enum_val> enumerator
+
+
 
 %token <float_constant> FLOAT_CONSTANT
 %token <int_constant> INT_CONSTANT
@@ -234,8 +281,7 @@ designator
 	;
 
 storage_class
-    :
-    EXTERN
+    : EXTERN
     | STATIC
     ;
 
@@ -299,6 +345,7 @@ struct_or_union_specifier
 	| struct_or_union IDENTIFIER
 	;
 
+// missing: type this terminal
 struct_or_union
 	: STRUCT
 	| UNION

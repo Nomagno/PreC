@@ -104,11 +104,16 @@ struct ArgumentExpressionList {
     struct ArgumentExpressionList *next;
 };
 
-struct DesignatorList {
+struct Designator {
+    enum {Access='a', DesignatorIndex='i'} tag;
     union {
         char *access;
         struct ConstExpr *index;
     };
+};
+
+struct DesignatorList {
+    struct Designator *desig;
     struct DesignatorList *next;
 };
 
@@ -149,6 +154,7 @@ enum TypeSort {
     u16=C('u',16),
     i8=C('i',8),
     u8=C('u',8),
+    Void='v',
 };
 
 struct Block;
@@ -183,10 +189,12 @@ struct Type {
     };
 };
 
+struct TypeParam {
+    struct Type *type;
+    char *name;
+};
 struct TypeParamList {
-    // if all are NULL: variadic ender u32(&)(x, y, ...)
-    struct Type *val_type;
-    char *val_name;
+    struct TypeParam *param;
     struct TypeParamsList *next;
 };
 
@@ -206,9 +214,13 @@ struct ConstExpr {
     struct Expr *x;
 };
 
+struct ConstVarDecl {
+    char *name;
+    struct ConstantExpression *val;
+};
+
 struct ConstVarList {
-    char *var_name;
-    struct ConstantExpression *var_val;
+    struct ConstVarDecl *decl;
     struct ConstVarList *next;
 };
 
@@ -228,14 +240,18 @@ enum StorageClass {
     Extern='e',
 };
 
+struct VarDecl {
+    char *name;
+    struct Initializer *val;
+};
+
 struct VarList {
-    char *var_name;
-    struct Initializer *var_val;
+    struct VarDecl *var_decl;
     struct VarList *next;
 };
 
 struct Declaration {
-    enum StorageClass *class;
+    enum StorageClass class;
     struct Type *type;
     struct VarList *vars;
 };
@@ -245,12 +261,16 @@ struct Block {
 };
 
 struct BlockList {
+    struct BlockItem *item;
+    struct BlockList *next;
+};
+
+struct BlockItem {
     enum { Statement='s', Declaration='d' } tag;
     union {
         struct Statement *stat;
         struct Declaration *decl;
     };
-    struct BlockList *next;
 };
 
 enum StatementType {

@@ -11,6 +11,7 @@ IS                      ((u|U)|(u|U)?(l|L|ll|LL)|(l|L|ll|LL)(u|U))
 int yylex(void);
 int yyerror(const char *s);
 
+#include "prec_ast.h"
 #include "y.tab.h"
 
 void count(void);
