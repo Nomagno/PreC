@@ -8,22 +8,24 @@ enum BinOp {
     Add='+',
     Sub='-',
     And='a',
+    BoolAnd='A',
     Or='o',
+    BoolOr='O',
     Xor='x',
+    LeftShift=C('<','<'),
+    RightShift=C('>','>'),
     Less='<',
     More='>',
     Equal=C('=','='),
     MoreEqual=C('>','='),
     LessEqual=C('>','='),
     NotEqual=C('!','='),
-    StructDeref=C('-', '>'),
-    StructAccess='.',
     Assign='=',
     Sequence=',',
+    Index='i',
 };
 
 enum UnOp {
-    Index='i',
     Sizeof='s',
     Ref='&',
     Deref='^',
@@ -44,10 +46,14 @@ enum ExprType {
     Identifier='i',
     String='s',
     Ternary='c',
+    Float='f',
+    Int='d',
     Constant='c',
     Cast='<',
     Default='d',
     CompoundLiteral='l',
+    StructDeref=C('-', '>'),
+    StructAccess='.',
 };
 
 struct Type;
@@ -57,19 +63,22 @@ struct Expr {
     enum ExprType tag;
     union {
         struct {
-            enum BinOp op;
+            struct Expr *e;
+            char *member;
+        } struct_access_deref;
+
+        struct {
+            enum BinOp tag;
             struct Expr *e1;
             struct Expr *e2;
         } binOp;
 
         struct {
-            enum UnOp op;
+            enum UnOp tag;
             struct Expr *e;
         } unOp;
 
-        struct {
-            struct Type *type;
-        } sizeof_type;
+        struct Type *sizeof_type;
 
         struct {
             struct Type *type;
@@ -87,10 +96,12 @@ struct Expr {
             struct ArgumentExpressionList *args;
         } function_call;
 
-        struct Initializer *compound_literal;
+        struct {
+            struct Type *type;
+            struct Initializer *init;
+        } compound_literal;
 
         struct Type *default_initializer;
-
         char *string;
         char *identifier;
         double fp_num;
@@ -166,7 +177,7 @@ struct Type {
     enum TypeSort tag;
     union {
         struct {
-            enum TypeOp op;
+            enum TypeOp tag;
             struct Type *t;
         } compound;
 
@@ -211,7 +222,7 @@ struct EnumValue {
 
 
 struct ConstExpr {
-    struct Expr *x;
+    struct Expr *expr;
 };
 
 struct ConstVarDecl {

@@ -1,9 +1,19 @@
 %expect 1
 
 %{
+    #include "stdlib.h"
     #include "prec_ast.h"
     int yylex(void);
     int yyerror(const char *s);
+
+    #define DUP(...) ({typeof(__VA_ARGS__) *tmp;\
+                      tmp = malloc(sizeof(__VA_ARGS__));\
+                      *tmp = __VA_ARGS__;\
+                      tmp; })
+    #define DUP_T(_type, _tag, ...) DUP((struct _type){.tag = _tag, __VA_ARGS__})
+
+    #define BIN_EXPR(_tag, _arg1, _arg2) DUP_T(Expr, Binary, .binOp = { .tag = _tag, .e1 = _arg1, .e2 = _arg2 });
+    #define UN_EXPR(_tag, _arg) DUP_T(Expr, Unary, .unOp = { .tag = _tag, .e = _arg});
 %}
 
 %union {
@@ -11,7 +21,7 @@
     struct Declaration *declaration;
     struct VarList *var_list;
     struct VarDecl *var_decl;
-    
+
     struct ConstVarDecl *const_var_decl;
     struct ConstVarList *const_var_list;
     struct ConstDeclaration *const_declaration;
@@ -102,7 +112,7 @@
 %token PTR_OP INC_OP DEC_OP LEFT_OP RIGHT_OP LE_OP GE_OP EQ_OP NE_OP
 %token AND_OP OR_OP
 
-%token EXTERN STATIC RESTRICT MUT VOLATILE 
+%token EXTERN STATIC RESTRICT MUT VOLATILE
 %token BOOL U8 I8 U16 I16 U32 I32 U64 I64 F32 F64 VOID
 %token STRUCT UNION ENUM
 %token ELLIPSIS
@@ -129,24 +139,40 @@
 
 primary_expression
 	: IDENTIFIER
+	    { $$ = DUP_T(Expr, Identifier, .identifier = $1); }
 	| INT_CONSTANT
+	    { $$ = DUP_T(Expr, Int, .int_num = $1); }
 	| FLOAT_CONSTANT
+	    { $$ = DUP_T(Expr, Float, .fp_num = $1); }
 	| STRING_LITERAL
+	    { $$ = DUP_T(Expr, String, .string = $1); }
 	| '(' expression ')'
+	    { $$ = $2; }
 	;
 
 postfix_expression
 	: primary_expression
+	    { $$ = $1; }
 	| postfix_expression '[' expression ']'
+	    { $$ = BIN_EXPR(Index, $1, $3) }
 	| postfix_expression '(' ')'
+	    { $$ = DUP_T(Expr, FunctionCall, .function_call = { .callee = $1, .args = NULL}); }
 	| postfix_expression '(' argument_expression_list ')'
+	    { $$ = DUP_T(Expr, FunctionCall, .function_call = { .callee = $1, .args = $3}); }
 	| postfix_expression '(' argument_expression_list ',' ')'
+	    { $$ = DUP_T(Expr, FunctionCall, .function_call = { .callee = $1, .args = $3}); }
 	| postfix_expression '.' IDENTIFIER
+	    { $$ = DUP_T(Expr, StructAccess, .struct_access_deref = { .e = $1, .member = $3}); }
 	| postfix_expression PTR_OP IDENTIFIER
+	    { $$ = DUP_T(Expr, StructDeref, .struct_access_deref = { .e = $1, .member = $3}); }
 	| postfix_expression INC_OP
+	    { $$ = UN_EXPR(PostIncrement, $1); }
 	| postfix_expression DEC_OP
+	    { $$ = UN_EXPR(PostDecrement, $1); }
 	| '<' type '>' compound_literal_initializer
+	    { $$ = DUP_T(Expr, CompoundLiteral, .compound_literal = { .type = $2, .init = $4 } ); }
 	| '<' type '>' DEFAULT
+	    { $$ = DUP_T(Expr, Default, .default_initializer = $2); }
 	;
 
 argument_expression_list
@@ -156,62 +182,100 @@ argument_expression_list
 
 unary_expression
 	: postfix_expression
+	    { $$ = $1; }
 	| INC_OP unary_expression
+	    { $$ = UN_EXPR(PreIncrement, $2); }
 	| DEC_OP unary_expression
+	    { $$ = UN_EXPR(PreDecrement, $2); }
 	| NOT cast_expression
+	    { $$ = UN_EXPR(Not, $2); }
 	| '&' cast_expression
+	    { $$ = UN_EXPR(Ref, $2); }
 	| '^' cast_expression
+	    { $$ = UN_EXPR(Deref, $2); }
 	| '~' cast_expression
+	    { $$ = UN_EXPR(Neg, $2); }
 	| '!' cast_expression
+	    { $$ = UN_EXPR(BoolNot, $2); }
 	| SIZEOF unary_expression
+	    { $$ = UN_EXPR(Sizeof, $2); }
 	| SIZEOF '<' type '>'
+	    { $$ = DUP_T(Expr, SizeofType, .sizeof_type = $3); }
 	;
 
 cast_expression
 	: unary_expression
+	    { $$ = $1; }
 	| '<' type '>' cast_expression
+	    { $$ = DUP_T(Expr, Cast, .cast = { .type = $2, .e = $4 }); }
 	;
 
 arithmetic_expression
     : cast_expression
+	    { $$ = $1; }
     | arithmetic_expression '*' arithmetic_expression
+	    { $$ = BIN_EXPR(Mul, $1, $3) }
     | arithmetic_expression '/' arithmetic_expression
+	    { $$ = BIN_EXPR(Div, $1, $3) }
     | arithmetic_expression '%' arithmetic_expression
+	    { $$ = BIN_EXPR(Mod, $1, $3) }
     | arithmetic_expression '+' arithmetic_expression
+	    { $$ = BIN_EXPR(Add, $1, $3) }
     | arithmetic_expression '-' arithmetic_expression
+	    { $$ = BIN_EXPR(Sub, $1, $3) }
     | arithmetic_expression LEFT_OP arithmetic_expression
+	    { $$ = BIN_EXPR(LeftShift, $1, $3) }
     | arithmetic_expression RIGHT_OP arithmetic_expression
+	    { $$ = BIN_EXPR(RightShift, $1, $3) }
     | arithmetic_expression '<' arithmetic_expression
+	    { $$ = BIN_EXPR(Less, $1, $3) }
     | arithmetic_expression '>' arithmetic_expression
+	    { $$ = BIN_EXPR(More, $1, $3) }
     | arithmetic_expression LE_OP arithmetic_expression
+	    { $$ = BIN_EXPR(LessEqual, $1, $3) }
     | arithmetic_expression GE_OP arithmetic_expression
+	    { $$ = BIN_EXPR(MoreEqual, $1, $3) }
     | arithmetic_expression EQ_OP arithmetic_expression
+	    { $$ = BIN_EXPR(Equal, $1, $3) }
     | arithmetic_expression NE_OP arithmetic_expression
+	    { $$ = BIN_EXPR(NotEqual, $1, $3) }
     | arithmetic_expression AND arithmetic_expression
+	    { $$ = BIN_EXPR(And, $1, $3) }
     | arithmetic_expression XOR arithmetic_expression
+	    { $$ = BIN_EXPR(Xor, $1, $3) }
     | arithmetic_expression OR arithmetic_expression
+	    { $$ = BIN_EXPR(Or, $1, $3) }
     | arithmetic_expression AND_OP arithmetic_expression
+	    { $$ = BIN_EXPR(BoolAnd, $1, $3) }
     | arithmetic_expression OR_OP arithmetic_expression
+	    { $$ = BIN_EXPR(BoolOr, $1, $3) }
     ;
 
 conditional_expression
 	: arithmetic_expression
+	    { $$ = $1; }
 	| arithmetic_expression '?' expression ':' arithmetic_expression
+	    { $$ = DUP_T(Expr, Ternary, .ternary = { .cond = $1, .if_true = $3, .if_false = $5 }); }
 	;
 
 /*Missing: check it's actually constant lol*/
 constant_expression
     : conditional_expression
+	    { $$ = DUP((struct ConstExpr){ .expr = $1 }); }
     ;
 
 assignment_expression
 	: conditional_expression
+	    { $$ = $1; }
 	| unary_expression '=' assignment_expression
+	    { $$ = BIN_EXPR(Assign, $1, $3) }
 	;
 
 expression
 	: assignment_expression
+	    { $$ = $1; }
 	| expression ',' assignment_expression
+	    { $$ = BIN_EXPR(Sequence, $1, $3) }
 	;
 
 
@@ -340,15 +404,12 @@ parameter_declaration
 
 
 struct_or_union_specifier
-	: struct_or_union IDENTIFIER '{' struct_declaration_list '}'
-	| struct_or_union '{' struct_declaration_list '}'
-	| struct_or_union IDENTIFIER
-	;
-
-// missing: type this terminal
-struct_or_union
-	: STRUCT
-	| UNION
+	: STRUCT IDENTIFIER '{' struct_declaration_list '}'
+	| STRUCT '{' struct_declaration_list '}'
+	| STRUCT IDENTIFIER
+	| UNION IDENTIFIER '{' struct_declaration_list '}'
+	| UNION '{' struct_declaration_list '}'
+	| UNION IDENTIFIER
 	;
 
 struct_declaration_list
