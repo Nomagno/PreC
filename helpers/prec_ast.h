@@ -1,3 +1,6 @@
+#ifndef _PREC_AST_H
+#define _PREC_AST_H
+
 #include <stdint.h>
 #define C(_c1, _c2) (int16_t)(_c1 << 8 | + _c2)
 
@@ -390,3 +393,5 @@ struct TopLevel {
     };
     struct TopLevel *next;
 };
+
+#endif

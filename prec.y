@@ -1,11 +1,13 @@
 %expect 1
 
 %{
-    #include "stdlib.h"
-    #include "prec_ast.h"
-    int yylex(void);
-    int yyerror(const char *s);
+    #include <stdlib.h>
 
+    #include "helpers/prec_ast.h"
+    #include "helpers/prec_transpiler.h"
+
+    int yyerror(const char *s);
+    int yylex(void);
 %}
 
 %union {
@@ -95,7 +97,7 @@
 %type <enum_list> enumerator_list
 %type <enum_val> enumerator
 
-%type <top_level> translation_unit;
+%type <top_level> top_level translation_unit;
 
 
 %token <float_constant> FLOAT_CONSTANT
@@ -127,7 +129,7 @@
 
 %token CASE DEFAULT IF ELSE SWITCH WHILE DO FOR GOTO CONTINUE BREAK RETURN
 
-%start translation_unit
+%start top_level
 
 %%
 
@@ -633,6 +635,9 @@ translation_unit
 	    { $$ = $1; $$->next = DUP_T(TopLevel, CInclude, .c_include = $3, .next = NULL); }
 	;
 
+top_level
+    : translation_unit
+        { transpile($1); }
 
 %%
 #include <stdio.h>
@@ -645,8 +650,4 @@ int yyerror(const char *s)
 	fflush(stdout);
 	printf("\n%*s\n%*s\n", column, "^", column, s);
 	return 1;
-}
-
-int main(void) {
-    yyparse();
 }

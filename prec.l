@@ -7,12 +7,13 @@ FS			(f|F|l|L)
 IS                      ((u|U)|(u|U)?(l|L|ll|LL)|(l|L|ll|LL)(u|U))
 
 %{
-#include <stdio.h>
-int yylex(void);
-int yyerror(const char *s);
 
-#include "prec_ast.h"
-#include "y.tab.h"
+#include <stdio.h>
+#include "helpers/prec_ast.h"
+
+#include "prec.tab.h"
+
+int yyerror(const char *s);
 
 void count(void);
 void comment(void);
@@ -155,5 +156,5 @@ void count(void)
 		else
 			column++;
 
-	ECHO;
+	//ECHO;
 }
