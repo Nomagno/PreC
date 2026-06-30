@@ -10,7 +10,6 @@
 // - structs are zero-initialized
 // - type casts and all syntactically similar operations now use angular brackets:
 //    - type casts <type>expression
-//    - default initializers <type>default
 //    - compound literals <type> { ... }
 //    - function literals <type> ${ ... }
 
@@ -21,9 +20,6 @@
 // - Parentheses allowed in type names in a lot more places, no erroring out stupidly
 // - Types go all before the variable name: int& [5] a;
 // - trailing commas allowed everywhere reasonable
-// - Structs can have default values accessed through a new ``default'' value:
-//    struct search_result { i32 x = -1; };
-//    struct search_result foo = <struct search_result>default;
 
 // - operators are now overloading-free:
 //      | -> OR

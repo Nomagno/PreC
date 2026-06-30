@@ -62,7 +62,6 @@ enum ExprType {
     Int='d',
     Constant='c',
     Cast='<',
-    Default='d',
     CompoundLiteral='l',
     StructDeref=C('-', '>'),
     StructAccess='.',
@@ -113,7 +112,6 @@ struct Expr {
             struct Initializer *init;
         } compound_literal;
 
-        struct Type *default_initializer;
         char *string;
         char *identifier;
         double fp_num;

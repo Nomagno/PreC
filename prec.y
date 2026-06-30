@@ -167,8 +167,6 @@ postfix_expression
 	    { $$ = UN_EXPR(PostDecrement, $1); }
 	| '<' type '>' compound_literal_initializer
 	    { $$ = DUP_T(Expr, CompoundLiteral, .compound_literal = { .type = $2, .init = $4 } ); }
-	| '<' type '>' DEFAULT
-	    { $$ = DUP_T(Expr, Default, .default_initializer = $2); }
 	;
 
 argument_expression_list
