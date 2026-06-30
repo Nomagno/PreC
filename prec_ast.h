@@ -1,6 +1,15 @@
 #include <stdint.h>
 #define C(_c1, _c2) (int16_t)(_c1 << 8 | + _c2)
 
+    #define DUP(...) ({typeof(__VA_ARGS__) *tmp;\
+                      tmp = malloc(sizeof(__VA_ARGS__));\
+                      *tmp = __VA_ARGS__;\
+                      tmp; })
+    #define DUP_T(_type, _tag, ...) DUP((struct _type){.tag = _tag, __VA_ARGS__})
+
+    #define BIN_EXPR(_tag, _arg1, _arg2) DUP_T(Expr, Binary, .binOp = { .tag = _tag, .e1 = _arg1, .e2 = _arg2 });
+    #define UN_EXPR(_tag, _arg) DUP_T(Expr, Unary, .unOp = { .tag = _tag, .e = _arg});
+
 enum BinOp {
     Mul='*',
     Div='/',
@@ -156,7 +165,10 @@ enum TypeSort {
     Struct='s',
     Union='u',
     Enum='e',
+    Array='a',
     CType=C('c','t'),
+    f64=C('f',64),
+    f32=C('f',32),
     i64=C('i',64),
     u64=C('u',64),
     i32=C('i',32),
@@ -166,6 +178,7 @@ enum TypeSort {
     i8=C('i',8),
     u8=C('u',8),
     Void='v',
+    Bool='b',
 };
 
 struct Block;
@@ -180,6 +193,11 @@ struct Type {
             enum TypeOp tag;
             struct Type *t;
         } compound;
+
+        struct {
+            struct ConstExpr *size;
+            struct Type *t;
+        } array;
 
         struct {
             char *name;
@@ -205,8 +223,8 @@ struct TypeParam {
     char *name;
 };
 struct TypeParamList {
-    struct TypeParam *param;
-    struct TypeParamsList *next;
+    struct TypeParam *param; // NULL: ellipsis
+    struct TypeParamList *next;
 };
 
 struct EnumeratorList {
@@ -216,8 +234,7 @@ struct EnumeratorList {
 
 struct EnumValue {
     char *name;
-    _Bool has_val;
-    int val;
+    struct ConstExpr *val;
 };
 
 
@@ -227,7 +244,7 @@ struct ConstExpr {
 
 struct ConstVarDecl {
     char *name;
-    struct ConstantExpression *val;
+    struct ConstExpr *val;
 };
 
 struct ConstVarList {
@@ -247,6 +264,7 @@ struct ConstDeclarationList {
 
 
 enum StorageClass {
+    None='n',
     Static='s',
     Extern='e',
 };
@@ -257,7 +275,7 @@ struct VarDecl {
 };
 
 struct VarList {
-    struct VarDecl *var_decl;
+    struct VarDecl *decl;
     struct VarList *next;
 };
 
@@ -344,17 +362,22 @@ struct LabeledStatement {
 };
 
 struct IterationStatement {
-    enum { While='w', DoWhile='d', For='f' } tag;
+    enum { While='w', DoWhile='d', For_Decl='f', For_Expr='F' } tag;
     union {
         struct {
             struct Expr *expr;
             struct Statement *stat;
         } while_dowhile_stat;
         struct {
-            struct Expr *initialization;
-            struct Expr *loop_action;
-            struct Expr *loop_condition;
-        } for_stat;
+            struct Declaration *init;
+            struct Expr *clause;
+            struct Expr *update;
+        } for_stat_decl;
+        struct {
+            struct Expr *init;
+            struct Expr *clause;
+            struct Expr *update;
+        } for_stat_expr;
     };
 };
 
@@ -365,5 +388,5 @@ struct TopLevel {
         struct Declaration *decl;
         char *c_include;
     };
-    struct DeclarationList *next;
+    struct TopLevel *next;
 };
