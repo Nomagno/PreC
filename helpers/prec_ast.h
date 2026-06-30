@@ -163,6 +163,8 @@ enum TypeOp {
 enum TypeSort {
     Compound='c',
     FunPointer='f',
+    TypeofExpr='t',
+    TypeofType='T',
     Struct='s',
     Union='u',
     Enum='e',
@@ -190,6 +192,10 @@ struct TypeParamList;
 struct Type {
     enum TypeSort tag;
     union {
+        struct Expr *typeof_expr;
+
+        struct Type *typeof_type;
+
         struct {
             enum TypeOp tag;
             struct Type *t;

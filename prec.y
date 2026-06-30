@@ -104,7 +104,7 @@
 %token <int_constant> INT_CONSTANT
 %token <identifier> IDENTIFIER
 %token <string_literal> STRING_LITERAL
-%token SIZEOF
+%token SIZEOF TYPEOF
 %token PTR_OP INC_OP DEC_OP LEFT_OP RIGHT_OP LE_OP GE_OP EQ_OP NE_OP
 %token AND_OP OR_OP
 
@@ -402,6 +402,10 @@ regular_type
 
 concrete_type
     : base_type
+    | TYPEOF '(' expression ')'
+        { $$ = DUP_T(Type, TypeofExpr, .typeof_expr = $3); }
+    | TYPEOF '<' type '>'
+        { $$ = DUP_T(Type, TypeofType, .typeof_type = $3); }
     | '@' IDENTIFIER /*Itentifier types are only for use with #c_include*/
         { $$ = DUP_T(Type, CType, .c_type = $2); }
     | regular_type '&'
