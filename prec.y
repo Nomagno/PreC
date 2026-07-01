@@ -293,9 +293,7 @@ const_var_list
 
 const_id_decl
     : IDENTIFIER
-        { $$ = DUP((struct ConstVarDecl){ .name = $1, .val = NULL}); }
-    | IDENTIFIER '=' constant_expression
-        { $$ = DUP((struct ConstVarDecl){ .name = $1, .val = $3}); }
+        { $$ = DUP((struct ConstVarDecl){ .name = $1 }); }
     ;
 
 declaration

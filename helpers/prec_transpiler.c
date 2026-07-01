@@ -1,13 +1,42 @@
 #include <stdio.h>
 #include <assert.h>
+#include <stdbool.h>
 #include "prec_ast.h"
 #include "prec_transpiler.h"
 
-char preceding_function_buffer[1 << 16];
 
-void prelude(char *);
+// TODO: In reality, there should be a linked list of output buffers, a new one will be inserted if a function
+// is translated within a function being translated.
+// This is needed exists because preC supports anonymous functions.
+// These are translated to a static function declared just before the current definition,
+// with a unique name, and a pointer to this function at the usage site.
+// When a declaration ends, the buffers are printed in reverse order, then the linked list is cleared.
 
-void t_type(struct Type *x) {
+// basic pseudocode example:
+// f() { x = func(){ B; y = func() { C; } }; A; }
+// translation:
+// anon_1() { C; }
+// anon_0() { B; y = anon_1; }
+// f() {  }
+
+
+// The basic idea is to used memory mapped buffers:
+/*
+FILE *f = fmemopen(buffer, sizeof(buffer), "w");
+fprintf(f, "mystring");
+fclose(f);
+*/
+
+#define p(...) fprintf(stdout, __VA_ARGS__)
+
+// t_XXX functions transpile directly to the buffer
+// t_str_XXX functions return a transpiled string
+
+// if insert_help_marker is true, "^" will be inserted exactly once in the transpiled string
+// this "^" can be replaced by an identifier in a variable declaration
+
+// main resource used: http://unixwiz.net/techtips/reading-cdecl.html
+char *t_str_type(struct Type *x, bool insert_help_marker) {
     
 }
 
@@ -15,13 +44,11 @@ void t_initializer(struct Initializer *x) {
     
 }
 
-#define p printf
-
 void t_expr(struct Expr *x) {
     switch (x->tag) {
     case SizeofType:
         p("sizeof(");
-        t_type(x->sizeof_type);
+        p("%s", t_str_type(x->sizeof_type, false));
         p(")");
         break;
     case Unary:
@@ -206,11 +233,11 @@ void t_expr(struct Expr *x) {
         p("("); t_expr(x->ternary.if_false); p(")");
         break;
     case Cast:
-        p("("); t_type(x->cast.type); p(")");
+        p("("); p("%s", t_str_type(x->cast.type, false)); p(")");
         p("("); t_expr(x->cast.e); p(")");
         break;
     case CompoundLiteral:
-        p("("); t_type(x->compound_literal.type); p(")");
+        p("("); p("%s", t_str_type(x->compound_literal.type, false)); p(")");
         t_initializer(x->compound_literal.init);
         break;
     case StructAccess:
@@ -219,9 +246,9 @@ void t_expr(struct Expr *x) {
         p("%s", x->struct_access_deref.member);
         break;
     case StructDeref:
-        p("("); t_type(x->cast.type); p(")");
+        p("("); t_expr(x->struct_access_deref.e); p(")");
         p("->");
-        p("("); t_expr(x->cast.e); p(")");
+        p("%s", x->struct_access_deref.member);
         break;
     }
 }

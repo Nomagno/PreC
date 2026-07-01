@@ -251,7 +251,6 @@ struct ConstExpr {
 
 struct ConstVarDecl {
     char *name;
-    struct ConstExpr *val;
 };
 
 struct ConstVarList {
