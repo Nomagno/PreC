@@ -1,23 +1,25 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <assert.h>
 #include <stdbool.h>
 #include "prec_ast.h"
 #include "prec_transpiler.h"
 
 
-// TODO: In reality, there should be a linked list of output buffers, a new one will be inserted if a function
+// There is a linked list of output buffers, a new one will be inserted if a function
 // is translated within a function being translated.
 // This is needed exists because preC supports anonymous functions.
 // These are translated to a static function declared just before the current definition,
 // with a unique name, and a pointer to this function at the usage site.
-// When a declaration ends, the buffers are printed in reverse order, then the linked list is cleared.
+// When a declaration ends, the buffers are printed, then the linked list is cleared.
 
 // basic pseudocode example:
 // f() { x = func(){ B; y = func() { C; } }; A; }
+
 // translation:
-// anon_1() { C; }
-// anon_0() { B; y = anon_1; }
-// f() {  }
+// static anon_1() { C; }
+// static anon_0() { B; y = anon_1; }
+// f() { x = anon_0; A; }
 
 
 // The basic idea is to used memory mapped buffers:
@@ -26,6 +28,41 @@ FILE *f = fmemopen(buffer, sizeof(buffer), "w");
 fprintf(f, "mystring");
 fclose(f);
 */
+
+struct BufferList {
+    char *current_buf;
+    FILE *current_stream;
+    struct BufferList *next;
+};
+
+struct BufferList *buffer_list;
+
+struct BufferList *create_buffer(void) {
+    struct BufferList *retval = malloc(sizeof(struct BufferList));
+    unsigned size = 1 << 16;
+    retval->current_buf = calloc(size, 1);
+    retval->current_stream = fmemopen(retval->current_buf, size, "w");
+    return retval;
+}
+
+void print_buffer_list(struct BufferList *list) {
+    struct BufferList *curr = list;
+    while (curr != NULL) {
+        printf("%s", curr->current_buf);
+        curr = curr->next;
+    }
+}
+
+void destroy_buffer_list(struct BufferList *list) {
+    struct BufferList *curr = list;
+    while (curr != NULL) {
+        fclose(curr->current_stream);
+        free(curr->current_buf);
+        struct BufferList *old = curr;
+        curr = curr->next;
+        free(old);
+    }
+}
 
 #define p(...) fprintf(stdout, __VA_ARGS__)
 

@@ -122,6 +122,7 @@ struct ConstExpr;
 
 struct ArgumentExpressionList {
     struct Expr *expr;
+    struct ArgumentExpressionList *prev;
     struct ArgumentExpressionList *next;
 };
 
@@ -135,12 +136,14 @@ struct Designator {
 
 struct DesignatorList {
     struct Designator *desig;
+    struct DesignatorList *prev;
     struct DesignatorList *next;
 };
 
 struct InitializerList {
     struct DesignatorList *designation;
     struct Initializer *current;
+    struct InitializerList *prev;
     struct InitializerList *next;
 };
 
@@ -231,11 +234,13 @@ struct TypeParam {
 };
 struct TypeParamList {
     struct TypeParam *param; // NULL: ellipsis
+    struct TypeParamList *prev;
     struct TypeParamList *next;
 };
 
 struct EnumeratorList {
     struct EnumValue *val;
+    struct EnumeratorList *prev;
     struct EnumeratorList *next;
 };
 
@@ -255,6 +260,7 @@ struct ConstVarDecl {
 
 struct ConstVarList {
     struct ConstVarDecl *decl;
+    struct ConstVarList *prev;
     struct ConstVarList *next;
 };
 
@@ -265,6 +271,7 @@ struct ConstDeclaration {
 
 struct ConstDeclarationList {
     struct ConstDeclaration *decl;
+    struct ConstDeclarationList *prev;
     struct ConstDeclarationList *next;
 };
 
@@ -282,6 +289,7 @@ struct VarDecl {
 
 struct VarList {
     struct VarDecl *decl;
+    struct VarList *prev;
     struct VarList *next;
 };
 
@@ -297,6 +305,7 @@ struct Block {
 
 struct BlockList {
     struct BlockItem *item;
+    struct BlockList *prev;
     struct BlockList *next;
 };
 
@@ -394,6 +403,7 @@ struct TopLevel {
         struct Declaration *decl;
         char *c_include;
     };
+    struct TopLevel *prev;
     struct TopLevel *next;
 };
 

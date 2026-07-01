@@ -173,7 +173,7 @@ argument_expression_list
 	: assignment_expression
 	    { $$ = DUP((struct ArgumentExpressionList){ .expr = $1, .next = NULL }); }
 	| argument_expression_list ',' assignment_expression
-	    { $$ = $1; $1->next = DUP((struct ArgumentExpressionList){ .expr = $3, .next = NULL }); }
+	    { $1->next = DUP((struct ArgumentExpressionList){ .expr = $3, .prev = $1, .next = NULL }); $$ = $1->next; }
 	;
 
 unary_expression
@@ -288,7 +288,7 @@ const_var_list
     : const_id_decl
         { $$ = DUP((struct ConstVarList){ .decl = $1, .next = NULL}); }
     | const_var_list ',' const_id_decl
-        { $$ = $1; $$->next = DUP((struct ConstVarList){ .decl = $3, .next = NULL }); }
+        { $1->next = DUP((struct ConstVarList){ .decl = $3, .prev = $1, .next = NULL }); $$ = $1->next; }
     ;
 
 const_id_decl
@@ -315,7 +315,7 @@ var_list
     : id_decl
         { $$ = DUP((struct VarList){ .decl = $1, .next = NULL}); }
     | var_list ',' id_decl
-        { $$ = $1; $$->next = DUP((struct VarList){ .decl = $3, .next = NULL }); }
+        { $1->next = DUP((struct VarList){ .decl = $3, .prev = $1, .next = NULL }); $$ = $1->next; }
     ;
 
 id_decl
@@ -351,9 +351,9 @@ initializer_list
 	| designation initializer
         { $$ = DUP((struct InitializerList){ .designation = $1, .current = $2, .next = NULL}); }
 	| initializer_list ',' initializer
-        { $$ = $1; $$->next = DUP((struct InitializerList){ .designation = NULL, .current = $3, .next = NULL}); }
+        { $1->next = DUP((struct InitializerList){ .designation = NULL, .current = $3, .prev = $1, .next = NULL}); $$ = $1->next; }
 	| initializer_list ',' designation initializer
-        { $$ = $1; $$->next = DUP((struct InitializerList){ .designation = $3, .current = $4, .next = NULL}); }
+        { $1->next = DUP((struct InitializerList){ .designation = $3, .current = $4, .prev = $1, .next = NULL}); $$ = $1->next; }
 	;
 
 designation
@@ -365,7 +365,7 @@ designator_list
 	: designator
 	    { $$ = DUP((struct DesignatorList){ .desig = $1, .next = NULL }); }
 	| designator_list designator
-	    { $$ = $1; $1->next = DUP((struct DesignatorList){ .desig = $2, .next = NULL }); }
+	    { $1->next = DUP((struct DesignatorList){ .desig = $2, .prev = $1, .next = NULL }); $$ = $1->next; }
 	;
 
 designator
@@ -465,16 +465,16 @@ parameter_type_list
 	| parameter_list ','
 	    { $$ = $1; }
 	| parameter_list ',' ELLIPSIS
-	    { $$ = $1; $$->next = DUP((struct TypeParamList){ .param = NULL, .next = NULL }); }
+	    { $1->next = DUP((struct TypeParamList){ .param = NULL, .prev = $1, .next = NULL }); $$ = $1->next; }
 	| parameter_list ',' ELLIPSIS ','
-	    { $$ = $1; $$->next = DUP((struct TypeParamList){ .param = NULL, .next = NULL }); }
+	    { $1->next = DUP((struct TypeParamList){ .param = NULL, .prev = $1, .next = NULL }); $$ = $1->next; }
 	;
 
 parameter_list
 	: parameter_declaration
 	    { $$ = DUP((struct TypeParamList){ .param = $1, .next = NULL }); }
 	| parameter_list ',' parameter_declaration
-	    { $$ = $1; $$->next = DUP((struct TypeParamList){ .param = $3, .next = NULL }); }
+	    { $1->next = DUP((struct TypeParamList){ .param = $3, .prev = $1, .next = NULL }); $$ = $1->next; }
 	;
 
 parameter_declaration
@@ -504,7 +504,7 @@ struct_declaration_list
 	: const_declaration
 	    { $$ = DUP((struct ConstDeclarationList){ .decl = $1, .next = NULL }); }
 	| struct_declaration_list const_declaration
-	    { $$ = $1; $$->next = DUP((struct ConstDeclarationList){ .decl = $2, .next = NULL }); }
+	    { $1->next = DUP((struct ConstDeclarationList){ .decl = $2, .prev = $1, .next = NULL }); $$ = $1->next; }
 	;
 
 enum_specifier
@@ -524,7 +524,7 @@ enumerator_list
 	: enumerator
 	   { $$ = DUP((struct EnumeratorList){ .val = $1, .next = NULL }); }
 	| enumerator_list ',' enumerator
-	   { $$ = $1; $$->next = DUP((struct EnumeratorList){ .val = $3, .next = NULL }); }
+	   { $1->next = DUP((struct EnumeratorList){ .val = $3, .prev = $1, .next = NULL }); $$ = $1->next; }
 	;
 
 enumerator
@@ -569,7 +569,7 @@ block_item_list
 	: block_item
 	    { $$ = DUP((struct BlockList){ .item = $1, .next = NULL }); }
 	| block_item_list block_item
-	    { $$ = $1; $$->next = DUP((struct BlockList){ .item = $2, .next = NULL }); }
+	    { $1->next = DUP((struct BlockList){ .item = $2, .prev = $1, .next = NULL }); $$ = $1->next; }
 	;
 
 block_item
@@ -630,9 +630,9 @@ translation_unit
 	| C_INCLUDE STRING_LITERAL
 	    { $$ = DUP_T(TopLevel, CInclude, .c_include = $2, .next = NULL); }
 	| translation_unit declaration
-	    { $$ = $1; $$->next = DUP_T(TopLevel, Decl, .decl = $2, .next = NULL); }
+	    { $1->next = DUP_T(TopLevel, Decl, .decl = $2, .prev = $1, .next = NULL); $$ = $1->next; }
 	| translation_unit C_INCLUDE STRING_LITERAL
-	    { $$ = $1; $$->next = DUP_T(TopLevel, CInclude, .c_include = $3, .next = NULL); }
+	    { $1->next = DUP_T(TopLevel, CInclude, .c_include = $3, .prev = $1, .next = NULL); $$ = $1->next; }
 	;
 
 top_level
