@@ -22,7 +22,17 @@
 // f() { x = anon_0; A; }
 
 
-// The basic idea is to used memory mapped buffers:
+// TODO: top-level declarations of function pointers with no qualifiers **MUST** be turned into
+// function declarations, or declaration + definition if it's also initialized.
+// so rather than the process described above,
+// directly translate the type with the variable name as the identifier, then do not print the equals sign, then directly translate the block.
+// if there's no block, then insert a semicolon at the end
+// if it's a list, then treat it as several different declarations
+// thankfully, 'no qualifiers' implies constness in preC, so there is in fact no risk of
+// issues with redefinition of symbols.
+
+
+// The basic idea is to used memory mapped buffers for all translation:
 /*
 FILE *f = fmemopen(buffer, sizeof(buffer), "w");
 fprintf(f, "mystring");
