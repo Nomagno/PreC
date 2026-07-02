@@ -75,15 +75,15 @@ void destroy_buffer_list(struct BufferList *list) {
 // t_str_XXX functions return a transpiled string
 
 
-// if identifier is NULL, an abstract generator will be generated
-
 // main resource used: http://unixwiz.net/techtips/reading-cdecl.html
 
 void t_internal_type(struct Type *x, FILE *stream) {
 }
 
-
-char *t_str_type(struct Type *x, char *identifier) {
+// - If identifier is NULL, an abstract generator will be generated.
+// - If fun_pointer_dereferenced is true, and the type is a function pointer,
+//   then the translation will be done as if it was a function instead of a pointer (no innermost pointer).
+char *t_str_type(struct Type *x, char *identifier, bool fun_pointer_dereferenced) {
     unsigned size = 1 << 12;
 
     char *buffer = calloc(size, 1);
@@ -95,6 +95,9 @@ char *t_str_type(struct Type *x, char *identifier) {
 
 }
 
+void t_block(struct Block *b);
+void t_expr(struct Expr *x);
+
 // The type can be NULL
 // It contains information from the type if available for inferrence:
 // u32 a = 0; -> t_initializer(0, u32);
@@ -103,14 +106,54 @@ char *t_str_type(struct Type *x, char *identifier) {
 // This is needed to translate function literals, as ${...} by itself can not be compiled
 // without a **direct** inferrence type provided, and will result in a compilation error.
 void t_initializer(struct Initializer *x, struct Type *t) {
-    
+    switch (x->tag) {
+    case Expr:
+        t_expr(x->expr);
+        break;
+    case Data:
+        // TODO: translate initializer list here
+        break;
+    case Code:
+        if (t == NULL) {
+            printf("Compiler error: function initializer without explicit type\n");
+            exit(1);
+        }
+
+        if (t->tag == Qualifier) {
+            t = t->qualifier.t;
+        }
+        if (t->tag != FunPointer) {
+            printf("Compiler error: explicit type of function initializer must be a function pointer\n");
+            exit(1);
+        }
+        
+        // As explanied above, we create a new buffer to print to,
+        // print the code to it, then restore the current buffer.
+        struct BufferList *buffer_saved = current_buffer;
+        struct BufferList *tmp = buffer_list;
+
+        buffer_list = create_buffer();
+        buffer_list->next = tmp;
+        current_buffer = buffer_list;
+
+        /*TODO: generate a unique identifier here*/
+        char *unique_temporary_identifier = NULL;
+        char *decl = t_str_type(t, unique_temporary_identifier, true /*dereference function pointer*/);
+        p("%s", decl);
+        // print the code itself
+        t_block(x->code);
+
+        current_buffer = buffer_saved;
+        p("&%s", unique_temporary_identifier);
+        break;
+    }
 }
 
 void t_expr(struct Expr *x) {
     switch (x->tag) {
     case SizeofType:
         p("sizeof(");
-        p("%s", t_str_type(x->sizeof_type, NULL));
+        p("%s", t_str_type(x->sizeof_type, NULL, false));
         p(")");
         break;
     case Unary:
@@ -289,17 +332,17 @@ void t_expr(struct Expr *x) {
         break;
     case Ternary:
         p("("); t_expr(x->ternary.cond); p(")");
-        printf("?");
+        p("?");
         p("("); t_expr(x->ternary.if_true); p(")");
-        printf(":");
+        p(":");
         p("("); t_expr(x->ternary.if_false); p(")");
         break;
     case Cast:
-        p("("); p("%s", t_str_type(x->cast.type, NULL)); p(")");
+        p("("); p("%s", t_str_type(x->cast.type, NULL, false)); p(")");
         p("("); t_expr(x->cast.e); p(")");
         break;
     case CompoundLiteral:
-        p("("); p("%s", t_str_type(x->compound_literal.type, NULL)); p(")");
+        p("("); p("%s", t_str_type(x->compound_literal.type, NULL, false)); p(")");
         t_initializer(x->compound_literal.init, x->compound_literal.type);
         break;
     case StructAccess:
