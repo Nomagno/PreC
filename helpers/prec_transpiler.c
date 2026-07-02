@@ -95,7 +95,14 @@ char *t_str_type(struct Type *x, char *identifier) {
 
 }
 
-void t_initializer(struct Initializer *x) {
+// The type can be NULL
+// It contains information from the type if available for inferrence:
+// u32 a = 0; -> t_initializer(0, u32);
+// u32 a = {0}; -> t_initializer({0}, u32);
+// u32 a = {(u32){0}}; -> t_initializer({t_initializer()}, NULL);
+// This is needed to translate function literals, as ${...} by itself can not be compiled
+// without a **direct** inferrence type provided, and will result in a compilation error.
+void t_initializer(struct Initializer *x, struct Type *t) {
     
 }
 
@@ -293,7 +300,7 @@ void t_expr(struct Expr *x) {
         break;
     case CompoundLiteral:
         p("("); p("%s", t_str_type(x->compound_literal.type, NULL)); p(")");
-        t_initializer(x->compound_literal.init);
+        t_initializer(x->compound_literal.init, x->compound_literal.type);
         break;
     case StructAccess:
         p("("); t_expr(x->struct_access_deref.e); p(")");
