@@ -49,7 +49,7 @@
     struct Initializer *initializer;
 
     enum StorageClass storage_class;
-    enum TypeOp type_operation;
+    enum Qualifier qualifier;
 
     char *identifier;
     char *string_literal;
@@ -91,7 +91,7 @@
 %type <type> type regular_type concrete_type base_type
 %type <type> enum_specifier
 %type <type> struct_or_union_specifier
-%type <type_operation> type_qualifier
+%type <qualifier> type_qualifier
 %type <type_param_list> parameter_type_list parameter_list
 %type <type_param> parameter_declaration
 %type <enum_list> enumerator_list
@@ -386,7 +386,15 @@ type
     : regular_type
         { $$ = $1; }
     | type_qualifier type
-        { $$ = DUP_T(Type, Compound, .compound = { .tag = $1, .t = $2}); }
+        {
+            // Two qualifiers together get squashed into a qualifier bit vector
+            if ($2->tag == Qualifier) {
+                $$ = $2;
+                $$->qualifier.qualifiers |= $1;
+            } else {
+                $$ = DUP_T(Type, Qualifier, .qualifier = { .qualifiers = $1, .t = $2});
+            }
+        }
     ;
 
 regular_type
@@ -395,7 +403,15 @@ regular_type
     | concrete_type
 	    { $$ = $1; }
     | regular_type type_qualifier
-        { $$ = DUP_T(Type, Compound, .compound = { .tag = $2, .t = $1}); }
+        {
+            // Two qualifiers together get squashed into a qualifier bit vector
+            if ($1->tag == Qualifier) {
+                $$ = $1;
+                $$->qualifier.qualifiers |= $2;
+            } else {
+                $$ = DUP_T(Type, Qualifier, .qualifier = { .qualifiers = $2, .t = $1});
+            }
+        }
     ;
 
 concrete_type
@@ -407,7 +423,7 @@ concrete_type
     | '@' IDENTIFIER /*Itentifier types are only for use with #c_include*/
         { $$ = DUP_T(Type, CType, .c_type = $2); }
     | regular_type '&'
-        { $$ = DUP_T(Type, Compound, .compound = { .tag = Reference, .t = $1}); }
+        { $$ = DUP_T(Type, Reference, .reference = $1); }
     | regular_type '[' ']'
         { $$ = DUP_T(Type, Array, .array = { .size = NULL, .t = $1}); }
     | regular_type '[' constant_expression ']'

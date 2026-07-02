@@ -156,15 +156,9 @@ struct Initializer {
     };
 };
 
-enum TypeOp {
-    Mut='m',
-    Restrict='r',
-    Volatile='v',
-    Reference='&',
-};
-
 enum TypeSort {
-    Compound='c',
+    Qualifier='q',
+    Reference='r',
     FunPointer='f',
     TypeofExpr='t',
     TypeofType='T',
@@ -192,6 +186,14 @@ struct ConstDeclarationList;
 struct EnumeratorList;
 struct TypeParamList;
 
+enum Qualifier {
+   Mut = 1 << 0,
+   Restrict = 1 << 1,
+   Volatile = 1 << 2,
+};
+
+typedef uint8_t QualifierBitVector;
+
 struct Type {
     enum TypeSort tag;
     union {
@@ -199,10 +201,12 @@ struct Type {
 
         struct Type *typeof_type;
 
+        struct Type *reference;
+
         struct {
-            enum TypeOp tag;
+            QualifierBitVector qualifiers;
             struct Type *t;
-        } compound;
+        } qualifier;
 
         struct {
             struct ConstExpr *size;

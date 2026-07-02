@@ -37,6 +37,9 @@ struct BufferList {
 
 struct BufferList *buffer_list;
 
+struct BufferList *current_buffer;
+
+
 struct BufferList *create_buffer(void) {
     struct BufferList *retval = malloc(sizeof(struct BufferList));
     unsigned size = 1 << 16;
@@ -64,17 +67,32 @@ void destroy_buffer_list(struct BufferList *list) {
     }
 }
 
-#define p(...) fprintf(stdout, __VA_ARGS__)
+#define p(...) fprintf(current_buffer->current_stream, __VA_ARGS__)
+
+#define pt(...) fprintf(stream, __VA_ARGS__)
 
 // t_XXX functions transpile directly to the buffer
 // t_str_XXX functions return a transpiled string
 
-// if insert_help_marker is true, "^" will be inserted exactly once in the transpiled string
-// this "^" can be replaced by an identifier in a variable declaration
+
+// if identifier is NULL, an abstract generator will be generated
 
 // main resource used: http://unixwiz.net/techtips/reading-cdecl.html
-char *t_str_type(struct Type *x, bool insert_help_marker) {
+
+void t_internal_type(struct Type *x, FILE *stream) {
+}
+
+
+char *t_str_type(struct Type *x, char *identifier) {
+    unsigned size = 1 << 12;
+
+    char *buffer = calloc(size, 1);
+
+    FILE *buffer_stream = fmemopen(buffer, size, "w");
+
     
+    t_internal_type(x, buffer_stream);
+
 }
 
 void t_initializer(struct Initializer *x) {
@@ -85,7 +103,7 @@ void t_expr(struct Expr *x) {
     switch (x->tag) {
     case SizeofType:
         p("sizeof(");
-        p("%s", t_str_type(x->sizeof_type, false));
+        p("%s", t_str_type(x->sizeof_type, NULL));
         p(")");
         break;
     case Unary:
@@ -270,11 +288,11 @@ void t_expr(struct Expr *x) {
         p("("); t_expr(x->ternary.if_false); p(")");
         break;
     case Cast:
-        p("("); p("%s", t_str_type(x->cast.type, false)); p(")");
+        p("("); p("%s", t_str_type(x->cast.type, NULL)); p(")");
         p("("); t_expr(x->cast.e); p(")");
         break;
     case CompoundLiteral:
-        p("("); p("%s", t_str_type(x->compound_literal.type, false)); p(")");
+        p("("); p("%s", t_str_type(x->compound_literal.type, NULL)); p(")");
         t_initializer(x->compound_literal.init);
         break;
     case StructAccess:
