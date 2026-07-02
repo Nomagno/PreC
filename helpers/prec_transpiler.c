@@ -459,7 +459,7 @@ void transpile(struct TopLevel *top) {
     while (top != NULL) {
         switch (top->tag) {
         case CInclude:
-            printf("\n#c_include %s\n", top->c_include);
+            printf("\n#include %s\n", top->c_include);
             break;
         case Decl:
             buffer_list = create_buffer();
