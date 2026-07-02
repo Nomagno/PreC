@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <stdbool.h>
+#include <err.h>
 #include "prec_ast.h"
 #include "prec_transpiler.h"
 
@@ -39,9 +40,12 @@ fprintf(f, "mystring");
 fclose(f);
 */
 
+unsigned global_identifier_counter = 0;
+
 struct BufferList {
-    char *current_buf;
-    FILE *current_stream;
+    size_t size;
+    char *buf;
+    FILE *stream;
     struct BufferList *next;
 };
 
@@ -49,19 +53,22 @@ struct BufferList *buffer_list;
 
 struct BufferList *current_buffer;
 
+#define REWIND_LIST(_name) do { while (_name->prev != NULL) { _name = _name->prev; } } while(0)
 
 struct BufferList *create_buffer(void) {
     struct BufferList *retval = malloc(sizeof(struct BufferList));
-    unsigned size = 1 << 16;
-    retval->current_buf = calloc(size, 1);
-    retval->current_stream = fmemopen(retval->current_buf, size, "w");
+    retval->size = 0;
+    retval->buf = NULL;
+    retval->stream = open_memstream(&retval->buf, &retval->size);
+    //setbuf(retval->stream, NULL);
     return retval;
 }
 
 void print_buffer_list(struct BufferList *list) {
     struct BufferList *curr = list;
     while (curr != NULL) {
-        printf("%s", curr->current_buf);
+        fclose(curr->stream);
+        printf("%s\n", curr->buf);
         curr = curr->next;
     }
 }
@@ -69,17 +76,14 @@ void print_buffer_list(struct BufferList *list) {
 void destroy_buffer_list(struct BufferList *list) {
     struct BufferList *curr = list;
     while (curr != NULL) {
-        fclose(curr->current_stream);
-        free(curr->current_buf);
+        free(curr->buf);
         struct BufferList *old = curr;
         curr = curr->next;
         free(old);
     }
 }
 
-#define p(...) fprintf(current_buffer->current_stream, __VA_ARGS__)
-
-#define pt(...) fprintf(stream, __VA_ARGS__)
+#define p(...) { int s = fprintf(current_buffer->stream, __VA_ARGS__); fflush(current_buffer->stream); if (s == -1) err(EXIT_FAILURE, "fprintf"); } ;
 
 // t_XXX functions transpile directly to the buffer
 // t_str_XXX functions return a transpiled string
@@ -94,18 +98,29 @@ void t_internal_type(struct Type *x, FILE *stream) {
 // - If fun_pointer_dereferenced is true, and the type is a function pointer,
 //   then the translation will be done as if it was a function instead of a pointer (no innermost pointer).
 char *t_str_type(struct Type *x, char *identifier, bool fun_pointer_dereferenced) {
-    unsigned size = 1 << 12;
+    size_t size = 0;
+    char *buffer = NULL;
+    FILE *buffer_stream = open_memstream(&buffer, &size);
+    //setbuf(buffer_stream, NULL);
 
-    char *buffer = calloc(size, 1);
-
-    FILE *buffer_stream = fmemopen(buffer, size, "w");
-
-    
     t_internal_type(x, buffer_stream);
 
+    // TODO: PLACEHOLDER CODE
+    if (identifier != NULL)
+        fprintf(buffer_stream, "int *%s", identifier);
+    else
+        fprintf(buffer_stream, "int");
+    // TODO: END OF PLACEHOLDER CODE
+
+    fclose(buffer_stream);
+
+    return buffer;
 }
 
-void t_block(struct Block *b);
+void t_block(struct Block *b) {
+    // TODO: PLACEHOLDER CODE
+    p("{ ... }");
+}
 void t_expr(struct Expr *x);
 
 // The type can be NULL
@@ -121,7 +136,38 @@ void t_initializer(struct Initializer *x, struct Type *t) {
         t_expr(x->expr);
         break;
     case Data:
-        // TODO: translate initializer list here
+        p("{");
+        // translate initializer list
+        struct InitializerList *node = x->data;
+        REWIND_LIST(node);
+
+        while (node != NULL) {
+            struct DesignatorList *desig_node = node->designation;
+            if (desig_node != NULL) {
+                REWIND_LIST(desig_node);
+                while (desig_node != NULL) {
+                    switch (desig_node->desig->tag) {
+                    case Access:
+                        p(".%s", desig_node->desig->access);
+                        break;
+                    case Index:
+                        p("[");
+                        t_expr(desig_node->desig->index->expr);
+                        p("]");
+                        break;
+                    }
+                    desig_node = desig_node->next;
+                }
+                p("=");
+            }
+            t_initializer(node->current, NULL);
+            node = node->next;
+            if (node != NULL)
+                p(", ");
+        }
+
+        p("}");
+
         break;
     case Code:
         if (t == NULL) {
@@ -136,7 +182,7 @@ void t_initializer(struct Initializer *x, struct Type *t) {
             printf("Compiler error: explicit type of function initializer must be a function pointer\n");
             exit(1);
         }
-        
+
         // As explanied above, we create a new buffer to print to,
         // print the code to it, then restore the current buffer.
         struct BufferList *buffer_saved = current_buffer;
@@ -146,8 +192,11 @@ void t_initializer(struct Initializer *x, struct Type *t) {
         buffer_list->next = tmp;
         current_buffer = buffer_list;
 
-        /*TODO: generate a unique identifier here*/
-        char *unique_temporary_identifier = NULL;
+        /*generate a unique identifier*/
+        char *unique_temporary_identifier;
+        asprintf(&unique_temporary_identifier, "_prec_anon_%d", global_identifier_counter);
+        global_identifier_counter += 1;
+
         char *decl = t_str_type(t, unique_temporary_identifier, true /*dereference function pointer*/);
         p("%s", decl);
         // print the code itself
@@ -199,6 +248,7 @@ void t_expr(struct Expr *x) {
             p("(");       t_expr(x->unOp.e); p(")--");
             break;
         }
+        break;
     case Binary:
         switch(x->binOp.tag) {
         case Mul:
@@ -308,11 +358,16 @@ void t_expr(struct Expr *x) {
             p("]");
             break;
         }
+        break;
     case FunctionCall:
         t_expr(x->function_call.callee);
         p("(");
         struct ArgumentExpressionList *curr = x->function_call.args;
-        assert(curr != NULL);
+        if (curr == NULL)
+            break;
+
+        REWIND_LIST(curr);
+
         t_expr(curr->expr);
         curr = curr->next;
         while (curr != NULL && curr->next != NULL) {
@@ -327,9 +382,7 @@ void t_expr(struct Expr *x) {
         p(")");
         break;
     case String:
-        p("\"");
         p("%s", x->string);
-        p("\"");
         break;
     case Identifier:
         p("%s", x->identifier);
@@ -368,6 +421,56 @@ void t_expr(struct Expr *x) {
     }
 }
 
+void t_declaration(struct Declaration *decl) {
+    char *storage_class;
+    switch (decl->class) {
+    case None:
+        storage_class = "";
+        break;
+    case Static:
+        storage_class = "static ";
+        break;
+    case Extern:
+        storage_class = "extern ";
+        break;
+    }
+
+    if (decl->vars == NULL) {
+        p("%s%s;", storage_class, t_str_type(decl->type, NULL, false));
+        return;
+    }
+
+    struct VarList *node = decl->vars;
+    REWIND_LIST(node);
+
+    while (node != NULL) {
+        p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, false));
+        if (node->decl->val != NULL) {
+            p(" = ");
+            t_initializer(node->decl->val, decl->type);
+        }
+        p(";\n");
+        node = node->next;
+    }
+}
+
 void transpile(struct TopLevel *top) {
-    p("[PLACEHOLDER] Address of top level AST node: %p\n", top);
+    REWIND_LIST(top);
+    while (top != NULL) {
+        switch (top->tag) {
+        case CInclude:
+            printf("\n#c_include %s\n", top->c_include);
+            break;
+        case Decl:
+            buffer_list = create_buffer();
+            current_buffer = buffer_list;
+            t_declaration(top->decl);
+            print_buffer_list(buffer_list);
+            destroy_buffer_list(buffer_list);
+            buffer_list = NULL;
+            current_buffer = NULL;
+            break;
+        }
+        top = top->next;
+    }
 }

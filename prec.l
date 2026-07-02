@@ -63,22 +63,22 @@ void comment(void);
 "f64"			{ count(); return(F64); }
 "void"			{ count(); return(VOID); }
 
-{L}({L}|{D})*		{ count(); return(IDENTIFIER); }
+{L}({L}|{D})*		{ count(); yylval.identifier=strdup(yytext); return(IDENTIFIER); }
 
-0[xX]{H}+{IS}?		{ count(); return(INT_CONSTANT); }
-0[0-7]*{IS}?		{ count(); return(INT_CONSTANT); }
-[1-9]{D}*{IS}?		{ count(); return(INT_CONSTANT); }
-L?'(\\.|[^\\'\n])+'	{ count(); return(INT_CONSTANT); }
+0[xX]{H}+{IS}?		{ count(); yylval.int_constant = atoll(yytext); return(INT_CONSTANT); }
+0[0-7]*{IS}?		{ count(); yylval.int_constant = atoll(yytext); return(INT_CONSTANT); }
+[1-9]{D}*{IS}?		{ count(); yylval.int_constant = atoll(yytext); return(INT_CONSTANT); }
+L?'(\\.|[^\\'\n])+'	{ count(); yylval.int_constant = atoll(yytext); return(INT_CONSTANT); }
 
-{D}+{E}{FS}?		{ count(); return(FLOAT_CONSTANT); }
-{D}*"."{D}+{E}?{FS}?	{ count(); return(FLOAT_CONSTANT); }
-{D}+"."{D}*{E}?{FS}?	{ count(); return(FLOAT_CONSTANT); }
-0[xX]{H}+{P}{FS}?	{ count(); return(FLOAT_CONSTANT); }
-0[xX]{H}*"."{H}+{P}{FS}?     { count(); return(FLOAT_CONSTANT); }
-0[xX]{H}+"."{H}*{P}{FS}?     { count(); return(FLOAT_CONSTANT); }
+{D}+{E}{FS}?		{ count(); yylval.float_constant = atof(yytext); return(FLOAT_CONSTANT); }
+{D}*"."{D}+{E}?{FS}?	{ count(); yylval.float_constant = atof(yytext); return(FLOAT_CONSTANT); }
+{D}+"."{D}*{E}?{FS}?	{ count(); yylval.float_constant = atof(yytext); return(FLOAT_CONSTANT); }
+0[xX]{H}+{P}{FS}?	{ count(); yylval.float_constant = atof(yytext); return(FLOAT_CONSTANT); }
+0[xX]{H}*"."{H}+{P}{FS}?     { count(); yylval.float_constant = atof(yytext); return(FLOAT_CONSTANT); }
+0[xX]{H}+"."{H}*{P}{FS}?     { count(); yylval.float_constant = atof(yytext); return(FLOAT_CONSTANT); }
 
 
-L?\"(\\.|[^\\"\n])*\"	{ count(); return(STRING_LITERAL); }
+L?\"(\\.|[^\\"\n])*\"	{ count(); yylval.string_literal=strdup(yytext); return(STRING_LITERAL); }
 
 "..."			{ count(); return(ELLIPSIS); }
 ">>"			{ count(); return(RIGHT_OP); }
