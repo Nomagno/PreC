@@ -89,7 +89,7 @@ void destroy_buffer_list(struct BufferList *list) {
     int s = fprintf(current_buffer->stream, __VA_ARGS__);\
     fflush(current_buffer->stream);\
     if (s == -1)\
-    err(EXIT_FAILURE, "fprintf");\
+        err(EXIT_FAILURE, "fprintf");\
 }
 
 #define INDENT_STR "  "
@@ -98,13 +98,143 @@ void tabs(void) {
         p(INDENT_STR);
 }
 
+void tabs_custom(FILE *stream) {
+    for (int i = 0; i < global_indent_level; i++) {
+        int s = fprintf(stream, INDENT_STR);
+        fflush(current_buffer->stream);
+        if (s == -1)
+            err(EXIT_FAILURE, "fprintf");
+    }
+}
+
 // t_XXX functions transpile directly to the buffer
 // t_str_XXX functions return a transpiled string
 
 
 // main resource used: http://unixwiz.net/techtips/reading-cdecl.html
 
+void t_expr(struct Expr *x);
+
+bool isBaseType (struct Type *x) {
+    return x->tag == TypeofExpr
+        || x->tag == TypeofType
+        || x->tag == Struct
+        || x->tag == Union
+        || x->tag == Enum
+        || x->tag == CType
+        || x->tag == f64
+        || x->tag == f32
+        || x->tag == i64
+        || x->tag == u64
+        || x->tag == i32
+        || x->tag == u32
+        || x->tag == i16
+        || x->tag == u16
+        || x->tag == i8
+        || x->tag == u8
+        || x->tag == Void
+        || x->tag == Bool
+        ;
+}
+
+char *t_str_type(struct Type *x, char *identifier, bool fun_pointer_dereferenced);
+
 void t_internal_type(struct Type *x, FILE *stream) {
+    if (!isBaseType(x)) {
+        switch (x->tag) {
+        case Qualifier:
+            t_internal_type(x->qualifier.t, stream);
+            break;
+        case Reference:
+            t_internal_type(x->reference, stream);
+            break;
+        case Array:
+            t_internal_type(x->array.t, stream);
+            break;
+        case FunPointer:
+            t_internal_type(x->fun_pointer.return_type, stream);
+            break;
+        }
+    } else {
+        switch (x->tag) {
+        case CType:
+            fprintf(stream, "@%s", x->c_type);
+            break;
+        case f64: fprintf(stream, "double"); break;
+        case f32: fprintf(stream, "float"); break;
+        case u64: fprintf(stream, "long unsigned"); break;
+        case i64: fprintf(stream, "long signed"); break;
+        case u32: fprintf(stream, "unsigned"); break;
+        case i32: fprintf(stream, "signed"); break;
+        case u16: fprintf(stream, "short unsigned"); break;
+        case i16: fprintf(stream, "short signed"); break;
+        case u8: fprintf(stream, "unsigned char"); break;
+        case i8: fprintf(stream, "signed char"); break;
+        case Void: fprintf(stream, "void"); break;
+        case Bool: fprintf(stream, "_Bool"); break;
+        case TypeofExpr: {
+            fprintf(stream, "typeof(");
+
+            struct BufferList *saved_buffer = current_buffer;
+
+            current_buffer = &(struct BufferList){ .stream = stream };
+
+            t_expr(x->typeof_expr);
+
+            current_buffer = saved_buffer;
+
+            fprintf(stream, ")");
+            break;
+        }
+        case TypeofType: {
+            fprintf(stream, "typeof<%s>", t_str_type(x->typeof_type, NULL, false));
+            break;
+        }
+        case Struct:                
+            break;
+        case Union:                
+            break;
+        case Enum:
+            fprintf(stream, "enum ");
+            if (x->enum_def.name != NULL) {
+                fprintf(stream, "%s ", x->enum_def.name);
+            }
+            if (x->enum_def.values != NULL) {
+                fprintf(stream, "{\n");
+                global_indent_level += 1;
+
+                struct EnumeratorList *node = x->enum_def.values;
+                REWIND_LIST(node);
+                while (node != NULL) {
+                    tabs_custom(stream);
+                    fprintf(stream, "%s", node->val->name);
+                    if (node->val->val != NULL) {
+                        fprintf(stream, "=");
+
+                        struct BufferList *saved_buffer = current_buffer;
+
+                        current_buffer = &(struct BufferList){ .stream = stream };
+
+                        t_expr(node->val->val->expr);
+
+                        current_buffer = saved_buffer;
+                    }
+                    if (node->next != NULL)
+                        fprintf(stream, ",");
+                    node = node->next;
+
+                    fprintf(stream, "\n");
+                }
+
+                global_indent_level -= 1;
+
+                tabs_custom(stream);
+                fprintf(stream, "}");
+            }
+            break;
+        }
+        fprintf(stream, " ");
+    }
 }
 
 // - If identifier is NULL, an abstract generator will be generated.
@@ -118,12 +248,12 @@ char *t_str_type(struct Type *x, char *identifier, bool fun_pointer_dereferenced
 
     t_internal_type(x, buffer_stream);
 
-    // TODO: PLACEHOLDER CODE
+    /*// TODO: PLACEHOLDER CODE
     if (identifier != NULL)
         fprintf(buffer_stream, "int *%s", identifier);
     else
         fprintf(buffer_stream, "int");
-    // TODO: END OF PLACEHOLDER CODE
+    // TODO: END OF PLACEHOLDER CODE*/
 
     fclose(buffer_stream);
 
@@ -166,7 +296,6 @@ void t_block(struct Block *b) {
     tabs();
     p("}\n");
 }
-void t_expr(struct Expr *x);
 
 // The type can be NULL
 // It contains information from the type if available for inferrence:
