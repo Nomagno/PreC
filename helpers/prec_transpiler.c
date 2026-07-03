@@ -139,102 +139,144 @@ bool isBaseType (struct Type *x) {
 
 char *t_str_type(struct Type *x, char *identifier, bool fun_pointer_dereferenced);
 
+bool hasConst(QualifierBitVector q) { return (q & Mut) == 0; }
+bool hasVolatile(QualifierBitVector q) { return q & Volatile; }
+bool hasRestrict(QualifierBitVector q) { return q & Restrict; }
+
+// probably dispatch qualifiers and pointers to one left stack, and
+// arrays and functions to another right stack
+// in the left stack, right == inner
+// in the right stack, left == inner
+
 void t_internal_type(struct Type *x, FILE *stream) {
-    if (!isBaseType(x)) {
-        switch (x->tag) {
-        case Qualifier:
+    switch (x->tag) {
+    // Compound types: qualifiers, references, function pointers, arrays
+    case Qualifier:
+        if (x->qualifier.qualifiers == Mut) {
+            // in C, there isn't a mut qualifier, there's a const qualifier,
+            // so if we're just a mut then take ourselves out of the picture
+            *x = *x->qualifier.t;
+            t_internal_type(x, stream);
+        } else if (x->qualifier.t->tag == Array) {
+            // arrays can't have qualifiers in C, instead apply them to the
+            // inner elements
+            // u32 [3] mut -> u32 mut [3]
+            struct Type curr = *x;
+            struct Type *inner_ptr = x->qualifier.t;
+            struct Type *inner_inner = inner_ptr->array.t;
+            struct Type inner = *x->qualifier.t;
+            *x = inner;
+            *inner_ptr = curr;
+            x->array.t = inner_ptr;
+            inner_ptr->qualifier.t = inner_inner;
+
+            // If two qualifier lists exist near each other, merge them
+            // u32 mut [3] mut -> u32 mut mut [3] -> u32 mut [3]
+            if (inner_ptr->qualifier.t->tag == Qualifier) {
+                struct Type *inner = inner_ptr->qualifier.t;
+                inner_ptr->qualifier.qualifiers |= inner->qualifier.qualifiers;
+                inner_ptr->qualifier.t = inner->qualifier.t;
+                free(inner);
+            }
+            t_internal_type(x, stream);
+        } else {
             t_internal_type(x->qualifier.t, stream);
-            break;
-        case Reference:
-            t_internal_type(x->reference, stream);
-            break;
-        case Array:
-            t_internal_type(x->array.t, stream);
-            break;
-        case FunPointer:
-            t_internal_type(x->fun_pointer.return_type, stream);
-            break;
+            // dispatch_qualifiers(x->qualifier.qualifiers BUT reversing mut to get constness)
         }
-    } else {
-        switch (x->tag) {
-        case CType:
-            fprintf(stream, "@%s", x->c_type);
-            break;
-        case f64: fprintf(stream, "double"); break;
-        case f32: fprintf(stream, "float"); break;
-        case u64: fprintf(stream, "long unsigned"); break;
-        case i64: fprintf(stream, "long signed"); break;
-        case u32: fprintf(stream, "unsigned"); break;
-        case i32: fprintf(stream, "signed"); break;
-        case u16: fprintf(stream, "short unsigned"); break;
-        case i16: fprintf(stream, "short signed"); break;
-        case u8: fprintf(stream, "unsigned char"); break;
-        case i8: fprintf(stream, "signed char"); break;
-        case Void: fprintf(stream, "void"); break;
-        case Bool: fprintf(stream, "_Bool"); break;
-        case TypeofExpr: {
-            fprintf(stream, "typeof(");
+        break;
+    case Reference:
+        t_internal_type(x->reference, stream);
+        // dispatch_pointer()
+        // dispatch_qualifiers(const)
+        break;
+    case Array:
+        t_internal_type(x->array.t, stream);
+        // dispatch_array(index_const_expression)
+        break;
+    case FunPointer:
+        t_internal_type(x->fun_pointer.return_type, stream);
+        // dispatch_pointer()
+        // dispatch_function(type_parameter_list)
+        break;
 
-            struct BufferList *saved_buffer = current_buffer;
+    // Base types
+    case CType:
+        fprintf(stream, "@%s", x->c_type);
+        break;
+    case f64: fprintf(stream, "double"); break;
+    case f32: fprintf(stream, "float"); break;
+    case u64: fprintf(stream, "long unsigned"); break;
+    case i64: fprintf(stream, "long signed"); break;
+    case u32: fprintf(stream, "unsigned"); break;
+    case i32: fprintf(stream, "signed"); break;
+    case u16: fprintf(stream, "short unsigned"); break;
+    case i16: fprintf(stream, "short signed"); break;
+    case u8: fprintf(stream, "unsigned char"); break;
+    case i8: fprintf(stream, "signed char"); break;
+    case Void: fprintf(stream, "void"); break;
+    case Bool: fprintf(stream, "_Bool"); break;
+    case TypeofExpr: {
+        fprintf(stream, "typeof(");
 
-            current_buffer = &(struct BufferList){ .stream = stream };
+        struct BufferList *saved_buffer = current_buffer;
 
-            t_expr(x->typeof_expr);
+        current_buffer = &(struct BufferList){ .stream = stream };
 
-            current_buffer = saved_buffer;
+        t_expr(x->typeof_expr);
 
-            fprintf(stream, ")");
-            break;
-        }
-        case TypeofType: {
-            fprintf(stream, "typeof<%s>", t_str_type(x->typeof_type, NULL, false));
-            break;
-        }
-        case Struct:
-            break;
-        case Union:
-            break;
-        case Enum:
-            fprintf(stream, "enum ");
-            if (x->enum_def.name != NULL) {
-                fprintf(stream, "%s ", x->enum_def.name);
-            }
-            if (x->enum_def.values != NULL) {
-                fprintf(stream, "{\n");
-                global_indent_level += 1;
+        current_buffer = saved_buffer;
 
-                struct EnumeratorList *node = x->enum_def.values;
-                REWIND_LIST(node);
-                while (node != NULL) {
-                    tabs_custom(stream);
-                    fprintf(stream, "%s", node->val->name);
-                    if (node->val->val != NULL) {
-                        fprintf(stream, "=");
-
-                        struct BufferList *saved_buffer = current_buffer;
-
-                        current_buffer = &(struct BufferList){ .stream = stream };
-
-                        t_expr(node->val->val->expr);
-
-                        current_buffer = saved_buffer;
-                    }
-                    if (node->next != NULL)
-                        fprintf(stream, ",");
-                    node = node->next;
-
-                    fprintf(stream, "\n");
-                }
-
-                global_indent_level -= 1;
-
-                tabs_custom(stream);
-                fprintf(stream, "}");
-            }
-            break;
-        }
-        fprintf(stream, " ");
+        fprintf(stream, ")");
+        break;
     }
+    case TypeofType: {
+        fprintf(stream, "typeof<%s>", t_str_type(x->typeof_type, NULL, false));
+        break;
+    }
+    case Struct:
+        break;
+    case Union:
+        break;
+    case Enum:
+        fprintf(stream, "enum ");
+        if (x->enum_def.name != NULL) {
+            fprintf(stream, "%s ", x->enum_def.name);
+        }
+        if (x->enum_def.values != NULL) {
+            fprintf(stream, "{\n");
+            global_indent_level += 1;
+
+            struct EnumeratorList *node = x->enum_def.values;
+            REWIND_LIST(node);
+            while (node != NULL) {
+                tabs_custom(stream);
+                fprintf(stream, "%s", node->val->name);
+                if (node->val->val != NULL) {
+                    fprintf(stream, "=");
+
+                    struct BufferList *saved_buffer = current_buffer;
+
+                    current_buffer = &(struct BufferList){ .stream = stream };
+
+                    t_expr(node->val->val->expr);
+
+                    current_buffer = saved_buffer;
+                }
+                if (node->next != NULL)
+                    fprintf(stream, ",");
+                node = node->next;
+
+                fprintf(stream, "\n");
+            }
+
+            global_indent_level -= 1;
+
+            tabs_custom(stream);
+            fprintf(stream, "}");
+        }
+        break;
+    }
+    fprintf(stream, " ");
 }
 
 // - If identifier is NULL, an abstract generator will be generated.
