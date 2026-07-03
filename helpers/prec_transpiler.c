@@ -374,6 +374,8 @@ void t_initializer(struct Initializer *x, struct Type *t) {
         asprintf(&unique_temporary_identifier, "_prec_anon_%d", global_identifier_counter);
         global_identifier_counter += 1;
 
+        p("static ");
+
         char *decl = t_str_type(t, unique_temporary_identifier, true /*dereference function pointer*/);
         p("%s", decl);
         // print the code itself
