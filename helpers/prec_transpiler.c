@@ -190,9 +190,9 @@ void t_internal_type(struct Type *x, FILE *stream) {
             fprintf(stream, "typeof<%s>", t_str_type(x->typeof_type, NULL, false));
             break;
         }
-        case Struct:                
+        case Struct:
             break;
-        case Union:                
+        case Union:
             break;
         case Enum:
             fprintf(stream, "enum ");
@@ -260,7 +260,8 @@ char *t_str_type(struct Type *x, char *identifier, bool fun_pointer_dereferenced
     return buffer;
 }
 
-void t_declaration(struct Declaration *decl);
+/*freeform: no newlines and no indents*/
+void t_declaration(struct Declaration *decl, bool freeform);
 void t_statement(struct Statement *stat);
 
 void t_block(struct Block *b) {
@@ -280,7 +281,7 @@ void t_block(struct Block *b) {
     while (node != NULL) {
         switch(node->item->tag) {
         case Declaration:
-            t_declaration(node->item->decl);
+            t_declaration(node->item->decl, false);
             p("\n");
             break;
         case Statement:
@@ -557,13 +558,13 @@ void t_expr(struct Expr *x) {
 
         while (curr != NULL) {
             t_expr(curr->expr);
-            if (curr->next != NULL) 
+            if (curr->next != NULL)
                 p(",");
             curr = curr->next;
         }
 
         p(")");
-       
+
         break;
     case String:
         p("%s", x->string);
@@ -605,7 +606,8 @@ void t_expr(struct Expr *x) {
     }
 }
 
-void t_declaration(struct Declaration *decl) {
+/*freeform: no newlines and no indents*/
+void t_declaration(struct Declaration *decl, bool freeform) {
     char *storage_class;
     switch (decl->class) {
     case None:
@@ -628,13 +630,19 @@ void t_declaration(struct Declaration *decl) {
     REWIND_LIST(node);
 
     while (node != NULL) {
-        tabs();
+        if (!freeform) {
+            tabs();
+        }
         p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, false));
         if (node->decl->val != NULL) {
             p(" = ");
             t_initializer(node->decl->val, decl->type);
         }
-        p(";\n");
+        if (freeform) {
+            p("; ");
+        } else {
+            p(";\n");
+        }
         node = node->next;
     }
 }
@@ -756,9 +764,59 @@ void t_statement(struct Statement *stat) {
             tabs();
             p("%s:\n", stat->l->label_name);
             t_statement(stat->l->stat);
-            break;        
+            break;
         }
         break;
+    case Iteration:
+        switch (stat->i->tag) {
+        case While:
+            tabs();
+            p("while (");
+            t_expr(stat->i->while_dowhile_stat.expr);
+            p(")\n");
+            if (stat->i->while_dowhile_stat.stat->tag == Block) {
+                t_statement(stat->i->while_dowhile_stat.stat);
+            } else {
+                global_indent_level += 1;
+                t_statement(stat->i->while_dowhile_stat.stat);
+                global_indent_level -= 1;
+            }
+            break;
+        case DoWhile:
+            tabs();
+            p("do\n");
+            if (stat->i->while_dowhile_stat.stat->tag == Block) {
+                t_statement(stat->i->while_dowhile_stat.stat);
+            } else {
+                global_indent_level += 1;
+                t_statement(stat->i->while_dowhile_stat.stat);
+                global_indent_level -= 1;
+            }
+            tabs();
+            p("while (");
+            t_expr(stat->i->while_dowhile_stat.expr);
+            p(");\n");
+            break;
+        case For_Decl:
+            tabs();
+            p("for (");
+            t_declaration(stat->i->for_stat_decl.init, true /*freeform: no newlines and no indents*/);
+            t_expr(stat->i->for_stat_decl.clause);
+            p("; ");
+            if (stat->i->for_stat_decl.update != NULL)
+                t_expr(stat->i->for_stat_decl.update);
+            break;
+        case For_Expr:
+            tabs();
+            p("for (");
+            t_expr(stat->i->for_stat_expr.init);
+            p("; ");
+            t_expr(stat->i->for_stat_expr.clause);
+            p("; ");
+            if (stat->i->for_stat_expr.update != NULL)
+                t_expr(stat->i->for_stat_expr.update);
+            break;
+        }
     }
 }
 
@@ -772,7 +830,7 @@ void transpile(struct TopLevel *top) {
         case Decl:
             buffer_list = create_buffer();
             current_buffer = buffer_list;
-            t_declaration(top->decl);
+            t_declaration(top->decl, false);
             print_buffer_list(buffer_list);
             destroy_buffer_list(buffer_list);
             buffer_list = NULL;
