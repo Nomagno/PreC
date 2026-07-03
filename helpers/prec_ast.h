@@ -391,11 +391,13 @@ struct IterationStatement {
             struct Declaration *init;
             struct Expr *clause;
             struct Expr *update;
+            struct Statement *stat;
         } for_stat_decl;
         struct {
             struct Expr *init;
             struct Expr *clause;
             struct Expr *update;
+            struct Statement *stat;
         } for_stat_expr;
     };
 };

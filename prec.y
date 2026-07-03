@@ -619,14 +619,14 @@ iteration_statement
 	| DO statement WHILE '(' expression ')' ';'
 	    { $$ = DUP_T(IterationStatement, DoWhile, .while_dowhile_stat = { .expr = $5, .stat = $2 }); }
 	| FOR '(' expression_statement expression_statement ')' statement
-	    { $$ = DUP_T(IterationStatement, For_Expr, .for_stat_expr = { .init = $3, .clause = $4 }); }
+	    { $$ = DUP_T(IterationStatement, For_Expr, .for_stat_expr = { .init = $3, .clause = $4, .stat = $6 }); }
 	
 	| FOR '(' expression_statement expression_statement expression ')' statement
-	    { $$ = DUP_T(IterationStatement, For_Expr, .for_stat_expr = { .init = $3, .clause = $4, .update = $5 }); }
+	    { $$ = DUP_T(IterationStatement, For_Expr, .for_stat_expr = { .init = $3, .clause = $4, .update = $5, .stat = $7 }); }
 	| FOR '(' declaration expression_statement ')' statement
-	    { $$ = DUP_T(IterationStatement, For_Decl, .for_stat_decl = { .init = $3, .clause = $4}); }
+	    { $$ = DUP_T(IterationStatement, For_Decl, .for_stat_decl = { .init = $3, .clause = $4, .stat = $6 }); }
 	| FOR '(' declaration expression_statement expression ')' statement
-	    { $$ = DUP_T(IterationStatement, For_Decl, .for_stat_decl = { .init = $3, .clause = $4, .update = $5 }); }
+	    { $$ = DUP_T(IterationStatement, For_Decl, .for_stat_decl = { .init = $3, .clause = $4, .update = $5, .stat = $7 }); }
 	;
 
 jump_statement

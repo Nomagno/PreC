@@ -346,7 +346,7 @@ void t_initializer(struct Initializer *x, struct Type *t) {
         break;
     case Code:
         if (t == NULL) {
-            printf("Compiler error: function initializer without explicit type\n");
+            fprintf(stderr, "Compiler error: Function initializer without explicit type\n");
             exit(1);
         }
 
@@ -354,7 +354,7 @@ void t_initializer(struct Initializer *x, struct Type *t) {
             t = t->qualifier.t;
         }
         if (t->tag != FunPointer) {
-            printf("Compiler error: explicit type of function initializer must be a function pointer\n");
+            fprintf(stderr, "Compiler error: Explicit type of function initializer must be a function pointer\n");
             //exit(1);
         }
 
@@ -800,11 +800,29 @@ void t_statement(struct Statement *stat) {
         case For_Decl:
             tabs();
             p("for (");
+
+            struct VarList *vars = stat->i->for_stat_decl.init->vars;
+            if (vars != NULL && vars->prev != NULL) {
+                fprintf(stderr, "Compiler error: Initializer of for loop can only have one variable.\n"
+                                "                If you must have several loop variables, "
+                                "please declare them in the outer scope.\n");
+                exit(1);
+            }
+            
             t_declaration(stat->i->for_stat_decl.init, true /*freeform: no newlines and no indents*/);
             t_expr(stat->i->for_stat_decl.clause);
             p("; ");
             if (stat->i->for_stat_decl.update != NULL)
                 t_expr(stat->i->for_stat_decl.update);
+
+            if (stat->i->for_stat_decl.stat->tag == Block) {
+                t_statement(stat->i->for_stat_decl.stat);
+            } else {
+                global_indent_level += 1;
+                t_statement(stat->i->for_stat_decl.stat);
+                global_indent_level -= 1;
+            }
+
             break;
         case For_Expr:
             tabs();
@@ -815,6 +833,15 @@ void t_statement(struct Statement *stat) {
             p("; ");
             if (stat->i->for_stat_expr.update != NULL)
                 t_expr(stat->i->for_stat_expr.update);
+
+            if (stat->i->for_stat_expr.stat->tag == Block) {
+                t_statement(stat->i->for_stat_expr.stat);
+            } else {
+                global_indent_level += 1;
+                t_statement(stat->i->for_stat_expr.stat);
+                global_indent_level -= 1;
+            }
+            
             break;
         }
     }
