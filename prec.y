@@ -8,6 +8,8 @@
 
     int yyerror(const char *s);
     int yylex(void);
+    extern int yylineno;
+
 %}
 
 %union {
@@ -590,7 +592,7 @@ block_item_list
 
 block_item
 	: declaration
-	    { $$ = DUP_T(BlockItem, Statement, .decl = $1); }
+	    { $$ = DUP_T(BlockItem, Declaration, .decl = $1); }
 	| statement
 	    { $$ = DUP_T(BlockItem, Statement, .stat = $1); }
 	;
@@ -661,9 +663,27 @@ top_level
 extern char yytext[];
 extern int column;
 
+extern char *filename;
+
 int yyerror(const char *s)
 {
 	fflush(stdout);
-	printf("\n%*s\n%*s\n", column, "^", column, s);
+
+    FILE *local_file = fopen(filename, "r");
+    unsigned count = 0;
+    if (local_file != NULL) {
+        char line[1024];
+        while (fgets(line, sizeof(line), local_file) != NULL) {
+            if ((yylineno == 0 && count == 0) || (yylineno > 0 && count == yylineno-1) || (yylineno > 1 && count == yylineno-2)) {
+                printf("%s", line);
+                count += 1;
+            } else {
+                count += 1;
+            }
+        }
+        fclose(local_file);
+    }
+	printf("%*s\n%*s\n", column, "^", column, s);
+    fprintf(stderr, "Error near line %d\n", yylineno);
 	return 1;
 }

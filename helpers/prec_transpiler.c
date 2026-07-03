@@ -41,6 +41,7 @@ fclose(f);
 */
 
 unsigned global_identifier_counter = 0;
+int global_indent_level = 0;
 
 struct BufferList {
     size_t size;
@@ -64,6 +65,7 @@ struct BufferList *create_buffer(void) {
     return retval;
 }
 
+
 void print_buffer_list(struct BufferList *list) {
     struct BufferList *curr = list;
     while (curr != NULL) {
@@ -83,7 +85,18 @@ void destroy_buffer_list(struct BufferList *list) {
     }
 }
 
-#define p(...) { int s = fprintf(current_buffer->stream, __VA_ARGS__); fflush(current_buffer->stream); if (s == -1) err(EXIT_FAILURE, "fprintf"); } ;
+#define p(...) {\
+    int s = fprintf(current_buffer->stream, __VA_ARGS__);\
+    fflush(current_buffer->stream);\
+    if (s == -1)\
+    err(EXIT_FAILURE, "fprintf");\
+}
+
+#define INDENT_STR "  "
+void tabs(void) {
+    for (int i = 0; i < global_indent_level; i++)
+        p(INDENT_STR);
+}
 
 // t_XXX functions transpile directly to the buffer
 // t_str_XXX functions return a transpiled string
@@ -117,9 +130,41 @@ char *t_str_type(struct Type *x, char *identifier, bool fun_pointer_dereferenced
     return buffer;
 }
 
+void t_declaration(struct Declaration *decl);
+void t_statement(struct Statement *stat);
+
 void t_block(struct Block *b) {
-    // TODO: PLACEHOLDER CODE
-    p("{ ... }");
+    if (b == NULL) {
+        tabs();
+        p("{ }");
+        return;
+    }
+
+    tabs();
+    p("{\n");
+
+    global_indent_level += 1;
+
+    struct BlockList *node = b->contents;
+    REWIND_LIST(node);
+    while (node != NULL) {
+        switch(node->item->tag) {
+        case Declaration:
+            t_declaration(node->item->decl);
+            p("\n");
+            break;
+        case Statement:
+            t_statement(node->item->stat);
+            //p("\n");
+            break;
+        }
+        node = node->next;
+    }
+
+    global_indent_level -= 1;
+
+    tabs();
+    p("}\n");
 }
 void t_expr(struct Expr *x);
 
@@ -180,11 +225,14 @@ void t_initializer(struct Initializer *x, struct Type *t) {
         }
         if (t->tag != FunPointer) {
             printf("Compiler error: explicit type of function initializer must be a function pointer\n");
-            exit(1);
+            //exit(1);
         }
 
         // As explanied above, we create a new buffer to print to,
         // print the code to it, then restore the current buffer.
+        int saved_indent = global_indent_level;
+        global_indent_level = 0;
+
         struct BufferList *buffer_saved = current_buffer;
         struct BufferList *tmp = buffer_list;
 
@@ -203,6 +251,7 @@ void t_initializer(struct Initializer *x, struct Type *t) {
         t_block(x->code);
 
         current_buffer = buffer_saved;
+        global_indent_level = saved_indent;
         p("&%s", unique_temporary_identifier);
         break;
     }
@@ -216,170 +265,174 @@ void t_expr(struct Expr *x) {
         p(")");
         break;
     case Unary:
+        p("(");
         switch(x->unOp.tag) {
         case Sizeof:
-            p("sizeof("); t_expr(x->unOp.e); p(")");
+            p("sizeof("); t_expr(x->unOp.e);
             break;
         case Ref:
-            p("&(");      t_expr(x->unOp.e); p(")");
+            p("&");      t_expr(x->unOp.e);
             break;
         case Deref:
-            p("*(");      t_expr(x->unOp.e); p(")");
+            p("*");      t_expr(x->unOp.e);
             break;
         case Neg:
-            p("-(");      t_expr(x->unOp.e); p(")");
+            p("-");      t_expr(x->unOp.e);
             break;
         case Not:
-            p("~(");      t_expr(x->unOp.e); p(")");
+            p("~");      t_expr(x->unOp.e);
             break;
         case BoolNot:
-            p("!(");      t_expr(x->unOp.e); p(")");
+            p("!");      t_expr(x->unOp.e);
             break;
         case PreIncrement:
-            p("++(");     t_expr(x->unOp.e); p(")");
+            p("++");     t_expr(x->unOp.e);
             break;
         case PreDecrement:
-            p("--(");     t_expr(x->unOp.e); p(")");
+            p("--");     t_expr(x->unOp.e);
             break;
         case PostIncrement:
-            p("(");       t_expr(x->unOp.e); p(")++");
+                   t_expr(x->unOp.e); p("++");
             break;
         case PostDecrement:
-            p("(");       t_expr(x->unOp.e); p(")--");
+                   t_expr(x->unOp.e); p("--");
             break;
         }
+        p(")");
         break;
     case Binary:
+        p("(");
         switch(x->binOp.tag) {
         case Mul:
-            p("("); t_expr(x->binOp.e1); p(")");
+            t_expr(x->binOp.e1);
             p("*");
-            p("("); t_expr(x->binOp.e2); p(")");
+            t_expr(x->binOp.e2);
             break;
         case Div:
-            p("("); t_expr(x->binOp.e1); p(")");
+            t_expr(x->binOp.e1);
             p("/");
-            p("("); t_expr(x->binOp.e2); p(")");
+            t_expr(x->binOp.e2);
             break;
         case Mod:
-            p("("); t_expr(x->binOp.e1); p(")");
+            t_expr(x->binOp.e1);
             p("%c", '%');
-            p("("); t_expr(x->binOp.e2); p(")");
+            t_expr(x->binOp.e2);
             break;
         case Add:
-            p("("); t_expr(x->binOp.e1); p(")");
+            t_expr(x->binOp.e1);
             p("+");
-            p("("); t_expr(x->binOp.e2); p(")");
+            t_expr(x->binOp.e2);
             break;
         case Sub:
-            p("("); t_expr(x->binOp.e1); p(")");
+            t_expr(x->binOp.e1);
             p("-");
-            p("("); t_expr(x->binOp.e2); p(")");
+            t_expr(x->binOp.e2);
             break;
         case And:
-            p("("); t_expr(x->binOp.e1); p(")");
+            t_expr(x->binOp.e1);
             p("&");
-            p("("); t_expr(x->binOp.e2); p(")");
+            t_expr(x->binOp.e2);
             break;
         case BoolAnd:
-            p("("); t_expr(x->binOp.e1); p(")");
+            t_expr(x->binOp.e1);
             p("&&");
-            p("("); t_expr(x->binOp.e2); p(")");
+            t_expr(x->binOp.e2);
             break;
         case Or:
-            p("("); t_expr(x->binOp.e1); p(")");
+            t_expr(x->binOp.e1);
             p("|");
-            p("("); t_expr(x->binOp.e2); p(")");
+            t_expr(x->binOp.e2);
             break;
         case BoolOr:
-            p("("); t_expr(x->binOp.e1); p(")");
+            t_expr(x->binOp.e1);
             p("||");
-            p("("); t_expr(x->binOp.e2); p(")");
+            t_expr(x->binOp.e2);
             break;
         case Xor:
-            p("("); t_expr(x->binOp.e1); p(")");
+            t_expr(x->binOp.e1);
             p("^");
-            p("("); t_expr(x->binOp.e2); p(")");
+            t_expr(x->binOp.e2);
             break;
         case LeftShift:
-            p("("); t_expr(x->binOp.e1); p(")");
+            t_expr(x->binOp.e1);
             p("<<");
-            p("("); t_expr(x->binOp.e2); p(")");
+            t_expr(x->binOp.e2);
             break;
         case RightShift:
-            p("("); t_expr(x->binOp.e1); p(")");
+            t_expr(x->binOp.e1);
             p(">>");
-            p("("); t_expr(x->binOp.e2); p(")");
+            t_expr(x->binOp.e2);
             break;
         case Less:
-            p("("); t_expr(x->binOp.e1); p(")");
+            t_expr(x->binOp.e1);
             p("<");
-            p("("); t_expr(x->binOp.e2); p(")");
+            t_expr(x->binOp.e2);
             break;
         case More:
-            p("("); t_expr(x->binOp.e1); p(")");
+            t_expr(x->binOp.e1);
             p(">");
-            p("("); t_expr(x->binOp.e2); p(")");
+            t_expr(x->binOp.e2);
             break;
         case Equal:
-            p("("); t_expr(x->binOp.e1); p(")");
+            t_expr(x->binOp.e1);
             p("==");
-            p("("); t_expr(x->binOp.e2); p(")");
+            t_expr(x->binOp.e2);
             break;
         case MoreEqual:
-            p("("); t_expr(x->binOp.e1); p(")");
+            t_expr(x->binOp.e1);
             p(">=");
-            p("("); t_expr(x->binOp.e2); p(")");
+            t_expr(x->binOp.e2);
             break;
         case LessEqual:
-            p("("); t_expr(x->binOp.e1); p(")");
+            t_expr(x->binOp.e1);
             p("<=");
-            p("("); t_expr(x->binOp.e2); p(")");
+            t_expr(x->binOp.e2);
             break;
         case NotEqual:
-            p("("); t_expr(x->binOp.e1); p(")");
+            t_expr(x->binOp.e1);
             p("!=");
-            p("("); t_expr(x->binOp.e2); p(")");
+            t_expr(x->binOp.e2);
             break;
         case Assign:
-            p("("); t_expr(x->binOp.e1); p(")");
+            t_expr(x->binOp.e1);
             p("=");
-            p("("); t_expr(x->binOp.e2); p(")");
+            t_expr(x->binOp.e2);
             break;
         case Sequence:
-            p("("); t_expr(x->binOp.e1); p(")");
+            t_expr(x->binOp.e1);
             p(",");
-            p("("); t_expr(x->binOp.e2); p(")");
+            t_expr(x->binOp.e2);
             break;
         case Index:
-            p("("); t_expr(x->binOp.e1); p(")");
+            t_expr(x->binOp.e1);
             p("[");
-                p("("); t_expr(x->binOp.e2); p(")");
+                t_expr(x->binOp.e2);
             p("]");
             break;
         }
+        p(")");
         break;
     case FunctionCall:
         t_expr(x->function_call.callee);
-        p("(");
         struct ArgumentExpressionList *curr = x->function_call.args;
-        if (curr == NULL)
+        if (curr == NULL) {
+            p("()");
             break;
+        }
+
+        p("(");
 
         REWIND_LIST(curr);
 
-        t_expr(curr->expr);
-        curr = curr->next;
-        while (curr != NULL && curr->next != NULL) {
-            if (curr->expr == NULL) {
-                p(", ...");
-            }
-            else {
-                p(","); t_expr(curr->expr);
-            }
+        while (curr != NULL) {
+            t_expr(curr->expr);
+            if (curr->next != NULL) 
+                p(",");
             curr = curr->next;
         }
+
         p(")");
+       
         break;
     case String:
         p("%s", x->string);
@@ -394,27 +447,27 @@ void t_expr(struct Expr *x) {
         p("%ld", x->int_num);
         break;
     case Ternary:
-        p("("); t_expr(x->ternary.cond); p(")");
+        t_expr(x->ternary.cond);
         p("?");
-        p("("); t_expr(x->ternary.if_true); p(")");
+        t_expr(x->ternary.if_true);
         p(":");
-        p("("); t_expr(x->ternary.if_false); p(")");
+        t_expr(x->ternary.if_false);
         break;
     case Cast:
         p("("); p("%s", t_str_type(x->cast.type, NULL, false)); p(")");
-        p("("); t_expr(x->cast.e); p(")");
+        t_expr(x->cast.e);
         break;
     case CompoundLiteral:
         p("("); p("%s", t_str_type(x->compound_literal.type, NULL, false)); p(")");
         t_initializer(x->compound_literal.init, x->compound_literal.type);
         break;
     case StructAccess:
-        p("("); t_expr(x->struct_access_deref.e); p(")");
+        t_expr(x->struct_access_deref.e);
         p(".");
         p("%s", x->struct_access_deref.member);
         break;
     case StructDeref:
-        p("("); t_expr(x->struct_access_deref.e); p(")");
+        t_expr(x->struct_access_deref.e);
         p("->");
         p("%s", x->struct_access_deref.member);
         break;
@@ -444,6 +497,7 @@ void t_declaration(struct Declaration *decl) {
     REWIND_LIST(node);
 
     while (node != NULL) {
+        tabs();
         p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, false));
         if (node->decl->val != NULL) {
             p(" = ");
@@ -451,6 +505,129 @@ void t_declaration(struct Declaration *decl) {
         }
         p(";\n");
         node = node->next;
+    }
+}
+
+void t_statement(struct Statement *stat) {
+    switch (stat->tag) {
+    case Block:
+        t_block(stat->b);
+        break;
+    case Expr:
+        tabs();
+        t_expr(stat->e);
+        p(";\n");
+        break;
+    case Selection:
+        switch (stat->s->tag) {
+        case If:
+            tabs();
+            p("if (");
+            t_expr(stat->s->simple_if.clause);
+            p(")\n");
+            if (stat->s->simple_if.action->tag == Block) {
+                t_statement(stat->s->simple_if.action);
+            } else {
+                global_indent_level += 1;
+                t_statement(stat->s->simple_if.action);
+                global_indent_level -= 1;
+            }
+            break;
+        case IfElse:
+            tabs();
+            p("if (");
+            t_expr(stat->s->if_else.clause);
+            p(")\n");
+            if (stat->s->if_else.action_true->tag == Block) {
+                t_statement(stat->s->if_else.action_true);
+            } else {
+                global_indent_level += 1;
+                t_statement(stat->s->if_else.action_true);
+                global_indent_level -= 1;
+            }
+
+            tabs();
+            p("else\n");
+            if (stat->s->if_else.action_false->tag == Block ||
+                (stat->s->if_else.action_false->tag == Selection &&
+                    (stat->s->if_else.action_false->s->tag == If
+                    || stat->s->if_else.action_false->s->tag == IfElse))) {
+                t_statement(stat->s->if_else.action_false);
+            } else {
+                global_indent_level += 1;
+                t_statement(stat->s->if_else.action_false);
+                global_indent_level -= 1;
+            }
+            break;
+        case Switch:
+            tabs();
+            p("switch (")
+            t_expr(stat->s->switch_stat.clause);
+            p(")\n");
+            if (stat->s->switch_stat.block->tag == Block) {
+                t_statement(stat->s->switch_stat.block);
+            } else {
+                global_indent_level += 1;
+                t_statement(stat->s->switch_stat.block);
+                global_indent_level -= 1;
+            }
+        }
+        break;
+    case Jump:
+        switch (stat->j->tag) {
+        case Return:
+            tabs();
+            p("return");
+
+            if (stat->j->return_stat.expr != NULL) {
+                p(" ");
+                t_expr(stat->j->return_stat.expr);
+            }
+            p(";\n");
+            break;
+        case Goto:
+            tabs();
+            p("goto %s;\n", stat->j->goto_stat.label_name);
+            break;
+        case Break:
+            tabs();
+            p("break;\n")
+            break;
+        case Continue:
+            tabs();
+            p("continue;\n")
+            break;
+        }
+        break;
+    case Labeled:
+        switch (stat->l->tag) {
+        case Case:
+            global_indent_level -= 1;
+
+            tabs();
+            p("case ");
+            t_expr(stat->l->case_expr->expr);
+            p(":\n");
+
+            global_indent_level += 1;
+
+            t_statement(stat->l->stat);
+            break;
+        case Default_Label:
+            global_indent_level -= 1;
+            tabs();
+            p("default:\n");
+            global_indent_level += 1;
+
+            t_statement(stat->l->stat);
+            break;
+        case Label:
+            tabs();
+            p("%s:\n", stat->l->label_name);
+            t_statement(stat->l->stat);
+            break;        
+        }
+        break;
     }
 }
 
