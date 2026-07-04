@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <assert.h>
 #include <stdbool.h>
 #include <err.h>
@@ -23,7 +24,7 @@
 // f() { x = anon_0; A; }
 
 
-// TODO: top-level declarations of function pointers with no qualifiers **MUST** be turned into
+// top-level declarations of function pointers with no qualifiers **MUST** be turned into
 // function declarations, or declaration + definition if it's also initialized.
 // so rather than the process described above,
 // directly translate the type with the variable name as the identifier, then do not print the equals sign, then directly translate the block.
@@ -39,6 +40,7 @@ FILE *f = fmemopen(buffer, sizeof(buffer), "w");
 fprintf(f, "mystring");
 fclose(f);
 */
+// We use open_memstream(3) in the end, which handles reallocation automatically
 
 unsigned global_identifier_counter = 0;
 int global_indent_level = 0;
@@ -62,7 +64,7 @@ struct BufferList *create_buffer(void) {
     retval->size = 0;
     retval->buf = NULL;
     retval->stream = open_memstream(&retval->buf, &retval->size);
-    //setbuf(retval->stream, NULL);
+
     return retval;
 }
 
@@ -116,25 +118,26 @@ void tabs_custom(FILE *stream) {
 
 void t_expr(struct Expr *x);
 
-bool isBaseType (struct Type *x) {
-    return x->tag == TypeofExpr
-        || x->tag == TypeofType
-        || x->tag == Struct
-        || x->tag == Union
-        || x->tag == Enum
-        || x->tag == CType
-        || x->tag == f64
-        || x->tag == f32
-        || x->tag == i64
-        || x->tag == u64
-        || x->tag == i32
-        || x->tag == u32
-        || x->tag == i16
-        || x->tag == u16
-        || x->tag == i8
-        || x->tag == u8
-        || x->tag == Void
-        || x->tag == Bool
+// a return value of 2 instead of 1 indicates that it's a void type, and must hence NOT be qualified
+bool isBaseType(enum TypeSort x) {
+    return x == TypeofExpr
+        || x == TypeofType
+        || x == Struct
+        || x == Union
+        || x == Enum
+        || x == CType
+        || x == f64
+        || x == f32
+        || x == i64
+        || x == u64
+        || x == i32
+        || x == u32
+        || x == i16
+        || x == u16
+        || x == i8
+        || x == u8
+        || x == Bool
+        || x == Void
         ;
 }
 
@@ -149,7 +152,7 @@ bool hasRestrict(QualifierBitVector q) { return q & Restrict; }
 // in the left stack, right == inner
 // in the right stack, left == inner
 
-// a stack might not be the right analogy, what Miss Mull said is this:
+// a stack might not be the right analogy, what I got told by a friend is this:
 // >> Add another layer of parens every time you switch from left to right, always put the basic type on the far left, qualifier placement is finnicky...
 // so probably gotta add a marker in the dispatch when this condition happens, to insert parentheses where appropiate (when switching from right to left buffers)
 
@@ -157,7 +160,10 @@ struct TypeBuffer {
     char *buf; // where the full type will be composed, holds the base type too
     size_t size;
     FILE *stream; // stream associated to the buffer
+
+    QualifierBitVector base_type_qualifiers;
     
+    enum {Nothing, Left, Right} last_written_to_buffer;
 
     size_t left_buffer_pos;
     char left_buffer[1024];
@@ -168,11 +174,10 @@ struct TypeBuffer {
 
 struct TypeBuffer *new_type_buffer(void) {
     struct TypeBuffer *retval = calloc(sizeof(struct TypeBuffer), 1);
+    retval->last_written_to_buffer = Nothing;
     retval->stream = open_memstream(&retval->buf, &retval->size);
-    // last byte left unused for implicit null terminator
-    retval->left_buffer_pos = sizeof(retval->left_buffer)-2;
-    // last byte left unused for implicit null terminator
-    retval->right_buffer_pos = sizeof(retval->right_buffer)-2;
+    retval->left_buffer_pos = sizeof(retval->left_buffer)/2;
+    retval->right_buffer_pos = sizeof(retval->right_buffer)/2;
     return retval;
 }
 
@@ -183,17 +188,121 @@ struct TypeBuffer *new_type_buffer(void) {
         err(EXIT_FAILURE, "fprintf");\
 }
 
+// arg list is the list of the textual representation of each paramter in the function type
+void dispatch_function(struct TypeBuffer *type_buffer, char *arg_list[]) {
+    type_buffer->last_written_to_buffer = Right;
+
+    type_buffer->right_buffer_pos -= 1;
+    type_buffer->right_buffer[type_buffer->right_buffer_pos] = ')';
+
+    char **begginning = arg_list;
+
+    // We do two passes: one to reserve space, and another to actually copy the arguments
+    size_t size = 0;
+    while (*arg_list != NULL) {
+        size += strlen(*arg_list);
+
+        // Reserve space for ", "
+        if (*(arg_list+1) != NULL)
+            size += 2;
+
+        arg_list++;
+    }
+    type_buffer->right_buffer_pos -= size+1;
+
+    // Copy over the parameters
+    size_t curr_pos = type_buffer->right_buffer_pos;
+    type_buffer->right_buffer[curr_pos] = '(';
+    curr_pos += 1;
+    
+
+    arg_list = begginning;
+
+    while (*arg_list != NULL) {
+        size_t len = strlen(*arg_list);
+        memcpy(type_buffer->right_buffer+curr_pos, *arg_list, len);
+        curr_pos += strlen(*arg_list);
+        
+        if (*(arg_list+1) != NULL)
+            memcpy(type_buffer->right_buffer+curr_pos, ", ", 2);
+
+        curr_pos += 2;
+        arg_list++;
+    }
+
+}
+
+void dispatch_array(struct TypeBuffer *type_buffer, struct Expr *expression) {
+    type_buffer->last_written_to_buffer = Right;
+
+    type_buffer->right_buffer_pos -= 1;
+    type_buffer->right_buffer[type_buffer->right_buffer_pos] = ']';
+
+    if (expression != NULL) {
+        char *expression_buffer = calloc(512, 1);
+        FILE *stream = fmemopen(expression_buffer, 512, "w");
+        
+        struct BufferList *saved_buffer = current_buffer;
+        current_buffer = &(struct BufferList){ .stream = stream };
+
+        t_expr(expression);
+
+        current_buffer = saved_buffer;
+        fclose(stream);
+
+        size_t size = strlen(expression_buffer);
+        type_buffer->right_buffer_pos -= size;
+        memcpy(type_buffer->right_buffer+type_buffer->right_buffer_pos, expression_buffer, size);
+        free(expression_buffer);
+    }
+
+    type_buffer->right_buffer_pos -= 1;
+    type_buffer->right_buffer[type_buffer->right_buffer_pos] = '[';
+}
+
+// Dispath to left buffer
+void dispatch_pointer(struct TypeBuffer *type_buffer) {
+    if (type_buffer->last_written_to_buffer == Right) {
+        type_buffer->left_buffer_pos -= 2;
+        type_buffer->left_buffer[type_buffer->left_buffer_pos] = '(';
+        type_buffer->left_buffer[type_buffer->left_buffer_pos+1] = '*';
+
+        type_buffer->right_buffer_pos -= 1;
+        type_buffer->right_buffer[type_buffer->right_buffer_pos] = ')';
+    } else {
+        type_buffer->left_buffer_pos -= 1;
+        type_buffer->left_buffer[type_buffer->left_buffer_pos] = '*';
+    }
+    type_buffer->last_written_to_buffer = Left;
+}
+
+// How it works: const will always be dispatched unless what is being dispatched is a mut
+// a mut cancels a nearby const
+void dispatch_qualifiers(struct TypeBuffer *type_buffer, enum TypeSort tag, bool is_const, bool is_restrict, bool is_volatile) {
+    if (isBaseType(tag)) {
+        if (!is_const)
+            type_buffer->base_type_qualifiers |= Mut;
+        else
+            type_buffer->base_type_qualifiers &= ~Mut;
+        
+        if (is_restrict)
+            type_buffer->base_type_qualifiers |= Restrict;
+        if (is_volatile)
+            type_buffer->base_type_qualifiers |= Volatile;
+    } else {
+        if (type_buffer->left_buffer[type_buffer->left_buffer_pos] == '(') {
+            // insert qualifiers at left_buffer_pos+2
+        } else if (type_buffer->left_buffer[type_buffer->left_buffer_pos] == '*') {
+            // insert qualifiers at left_buffer_pos+1
+        }
+    }
+}
 
 void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
     switch (x->tag) {
     // Compound types: qualifiers, references, function pointers, arrays
     case Qualifier:
-        if (x->qualifier.qualifiers == Mut) {
-            // in C, there isn't a mut qualifier, there's a const qualifier,
-            // so if we're just a mut then take ourselves out of the picture
-            *x = *x->qualifier.t;
-            t_internal_type(x, type_buffer);
-        } else if (x->qualifier.t->tag == Array) {
+        if (x->qualifier.t->tag == Array) {
             // arrays can't have qualifiers in C, instead apply them to the
             // inner elements
             // u32 [3] mut -> u32 mut [3]
@@ -216,23 +325,47 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
             }
             t_internal_type(x, type_buffer);
         } else {
+            QualifierBitVector q = x->qualifier.qualifiers;
             t_internal_type(x->qualifier.t, type_buffer);
-            // dispatch_qualifiers(x->qualifier.qualifiers BUT reversing mut to get constness)
+            dispatch_qualifiers(type_buffer, x->qualifier.t->tag, true, false, false);
+            dispatch_qualifiers(type_buffer, x->qualifier.t->tag, !(q & Mut), q & Restrict, q & Volatile);
         }
         break;
     case Reference:
         t_internal_type(x->reference, type_buffer);
-        // dispatch_pointer()
-        // dispatch_qualifiers(const)
+        dispatch_qualifiers(type_buffer, x->reference->tag, true, false, false);
+
+        dispatch_pointer(type_buffer);
+        dispatch_qualifiers(type_buffer, false, true, false, false);
         break;
     case Array:
         t_internal_type(x->array.t, type_buffer);
-        // dispatch_array(index_const_expression)
+
+        dispatch_array(type_buffer, x->array.size->expr);
         break;
     case FunPointer:
         t_internal_type(x->fun_pointer.return_type, type_buffer);
-        // dispatch_pointer()
-        // dispatch_function(type_parameter_list)
+        dispatch_qualifiers(type_buffer, x->fun_pointer.return_type->tag, true, false, false);
+
+        unsigned arg_i = 0;
+        char *arg_list[65] = {0};
+        struct TypeParamList *node = x->fun_pointer.param_list;
+        REWIND_LIST(node);
+        while (node != NULL) {
+            // We substract 1 because cell at index 64 will be used for implicit null termination
+            if (arg_i >= sizeof(arg_list)/sizeof(char *)-1) {
+                fprintf(stderr, "Compiler error: Function definitions can't have more than 64 arguments (uh, wtf?)\n");
+                exit(1);
+            }
+            arg_list[arg_i] = t_str_type(node->param->type, node->param->name, false);
+            node = node->next;
+            arg_i += 1;
+        }
+
+        dispatch_function(type_buffer, arg_list);
+
+        dispatch_pointer(type_buffer);
+        dispatch_qualifiers(type_buffer, false, true, false, false);
         break;
 
     // Base types
@@ -249,7 +382,13 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
     case i16: p_t("short signed"); break;
     case u8: p_t("unsigned char"); break;
     case i8: p_t("signed char"); break;
-    case Void: p_t("void"); break;
+    case Void: {
+        // refuse to qualify void types, or rather qualify as special value
+        type_buffer->base_type_qualifiers = 1 << 3;
+
+        p_t("void");
+        break;
+    }
     case Bool: p_t("_Bool"); break;
     case TypeofExpr: {
         p_t("typeof(");
@@ -270,8 +409,54 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
         break;
     }
     case Struct:
-        break;
     case Union:
+        if (x->tag == Struct) {
+            p_t("struct ");
+        } else {
+            p_t("union ");
+        }
+
+        if (x->struct_or_union_def.name != NULL) {
+            p_t("%s ", x->struct_or_union_def.name);
+        }
+
+        if (x->struct_or_union_def.declarations != NULL) {
+            p_t("{\n");
+            global_indent_level += 1;
+
+            struct ConstDeclarationList *node = x->struct_or_union_def.declarations;
+            REWIND_LIST(node);
+            while (node != NULL) {
+                struct ConstVarList *var_node = node->decl->vars;
+                if (var_node != NULL) {
+                    REWIND_LIST(var_node);
+                    while (var_node != NULL) {
+                        struct BufferList *saved_buffer = current_buffer;
+
+                        current_buffer = &(struct BufferList){ .stream = type_buffer->stream };
+
+                        tabs_custom(type_buffer->stream);
+                        p_t("%s", t_str_type(node->decl->type, var_node->decl->name, false));
+                        p_t(";\n");
+
+                        current_buffer = saved_buffer;
+                        
+                        var_node = var_node->next;
+                    }
+                } else {
+                    tabs_custom(type_buffer->stream);
+                    p_t("%s", t_str_type(node->decl->type, NULL, false));
+                    p_t(";\n");
+                }
+
+                node = node->next;
+            }
+
+            global_indent_level -= 1;
+
+            tabs_custom(type_buffer->stream);
+            p_t("}");
+        }
         break;
     case Enum:
         p_t("enum ");
@@ -312,7 +497,9 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
         }
         break;
     }
-    p_t(" ");
+    if (isBaseType(x->tag)) {
+        p_t(" ");
+    }
 }
 
 // - If identifier is NULL, an abstract generator will be generated.
@@ -322,21 +509,44 @@ char *t_str_type(struct Type *x, char *identifier, bool fun_pointer_dereferenced
     struct TypeBuffer *type_buffer = new_type_buffer();
 
     t_internal_type(x, type_buffer);
+    if (type_buffer->base_type_qualifiers & (1 << 3)) {
+        // do NOT add any qualifiers to the specially marked void base type
+        ;
+    } else {
+        if (!(type_buffer->base_type_qualifiers & Mut)) {
+            p_t("const ");
+        }
+        if (type_buffer->base_type_qualifiers & Restrict) {
+            p_t("restrict ");
+        }
+        if (type_buffer->base_type_qualifiers & Volatile) {
+            p_t("volatile ");
+        }
+    }
 
-    /*// TODO: PLACEHOLDER CODE
-    if (identifier != NULL)
-        fprintf(buffer_stream, "int *%s", identifier);
-    else
-        fprintf(buffer_stream, "int");
-    // TODO: END OF PLACEHOLDER CODE*/
+    if (fun_pointer_dereferenced) {
+        // To dereference, just remove the innermost pointer, which must always exist for a function pointer
+        assert(x->tag == FunPointer);
+        size_t size = strlen(type_buffer->left_buffer+type_buffer->left_buffer_pos);
+        assert(type_buffer->left_buffer[type_buffer->left_buffer_pos+size-1] == '*');
+        type_buffer->left_buffer[type_buffer->left_buffer_pos+size-1] = ' ';
+        type_buffer->left_buffer[sizeof(type_buffer->left_buffer)-2] = '\0';
+    }
+    p_t("%s", type_buffer->left_buffer+type_buffer->left_buffer_pos);
+    if (identifier != NULL) {
+        p_t("%s", identifier);
+    }
+    p_t("%s", type_buffer->right_buffer+type_buffer->right_buffer_pos);
 
     fclose(type_buffer->stream);
 
-    return type_buffer->buf;
+    char *retval = type_buffer->buf;
+    free(type_buffer);
+    return retval;
 }
 
 /*freeform: no newlines and no indents*/
-void t_declaration(struct Declaration *decl, bool freeform);
+void t_declaration(struct Declaration *decl, bool freeform, bool top_level);
 void t_statement(struct Statement *stat);
 
 void t_block(struct Block *b) {
@@ -356,7 +566,7 @@ void t_block(struct Block *b) {
     while (node != NULL) {
         switch(node->item->tag) {
         case Declaration:
-            t_declaration(node->item->decl, false);
+            t_declaration(node->item->decl, false, false /*top_level*/);
             p("\n");
             break;
         case Statement:
@@ -429,8 +639,8 @@ void t_initializer(struct Initializer *x, struct Type *t) {
             t = t->qualifier.t;
         }
         if (t->tag != FunPointer) {
-            fprintf(stderr, "Compiler error: Explicit type of function initializer must be a function pointer\n");
-            //exit(1);
+            fprintf(stderr, "Compiler error: Explicit type of function initializer must be a function pointer %c\n", t->tag);
+            exit(1);
         }
 
         // As explanied above, we create a new buffer to print to,
@@ -511,104 +721,64 @@ void t_expr(struct Expr *x) {
         p("(");
         switch(x->binOp.tag) {
         case Mul:
-            t_expr(x->binOp.e1);
-            p("*");
-            t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1); p("*"); t_expr(x->binOp.e2);
             break;
         case Div:
-            t_expr(x->binOp.e1);
-            p("/");
-            t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1); p("/"); t_expr(x->binOp.e2);
             break;
         case Mod:
-            t_expr(x->binOp.e1);
-            p("%c", '%');
-            t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1); p("%c", '%'); t_expr(x->binOp.e2);
             break;
         case Add:
-            t_expr(x->binOp.e1);
-            p("+");
-            t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1); p("+"); t_expr(x->binOp.e2);
             break;
         case Sub:
-            t_expr(x->binOp.e1);
-            p("-");
-            t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1); p("-"); t_expr(x->binOp.e2);
             break;
         case And:
-            t_expr(x->binOp.e1);
-            p("&");
-            t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1); p("&"); t_expr(x->binOp.e2);
             break;
         case BoolAnd:
-            t_expr(x->binOp.e1);
-            p("&&");
-            t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1); p("&&"); t_expr(x->binOp.e2);
             break;
         case Or:
-            t_expr(x->binOp.e1);
-            p("|");
-            t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1); p("|"); t_expr(x->binOp.e2);
             break;
         case BoolOr:
-            t_expr(x->binOp.e1);
-            p("||");
-            t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1); p("||"); t_expr(x->binOp.e2);
             break;
         case Xor:
-            t_expr(x->binOp.e1);
-            p("^");
-            t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1); p("^"); t_expr(x->binOp.e2);
             break;
         case LeftShift:
-            t_expr(x->binOp.e1);
-            p("<<");
-            t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1); p("<<"); t_expr(x->binOp.e2);
             break;
         case RightShift:
-            t_expr(x->binOp.e1);
-            p(">>");
-            t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1); p(">>"); t_expr(x->binOp.e2);
             break;
         case Less:
-            t_expr(x->binOp.e1);
-            p("<");
-            t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1); p("<"); t_expr(x->binOp.e2);
             break;
         case More:
-            t_expr(x->binOp.e1);
-            p(">");
-            t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1); p(">"); t_expr(x->binOp.e2);
             break;
         case Equal:
-            t_expr(x->binOp.e1);
-            p("==");
-            t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1); p("=="); t_expr(x->binOp.e2);
             break;
         case MoreEqual:
-            t_expr(x->binOp.e1);
-            p(">=");
-            t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1); p(">="); t_expr(x->binOp.e2);
             break;
         case LessEqual:
-            t_expr(x->binOp.e1);
-            p("<=");
-            t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1); p("<="); t_expr(x->binOp.e2);
             break;
         case NotEqual:
-            t_expr(x->binOp.e1);
-            p("!=");
-            t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1); p("!="); t_expr(x->binOp.e2);
             break;
         case Assign:
-            t_expr(x->binOp.e1);
-            p("=");
-            t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1); p("="); t_expr(x->binOp.e2);
             break;
         case Sequence:
-            t_expr(x->binOp.e1);
-            p(",");
-            t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1); p(","); t_expr(x->binOp.e2);
             break;
         case Index:
             t_expr(x->binOp.e1);
@@ -682,7 +852,7 @@ void t_expr(struct Expr *x) {
 }
 
 /*freeform: no newlines and no indents*/
-void t_declaration(struct Declaration *decl, bool freeform) {
+void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
     char *storage_class;
     switch (decl->class) {
     case None:
@@ -708,15 +878,30 @@ void t_declaration(struct Declaration *decl, bool freeform) {
         if (!freeform) {
             tabs();
         }
-        p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, false));
         if (node->decl->val != NULL) {
-            p(" = ");
-            t_initializer(node->decl->val, decl->type);
-        }
-        if (freeform) {
-            p("; ");
+            // top level functions with no qualifiers and a function initializer get implicitly converted to declarations/definitions
+            if (top_level && decl->type->tag == FunPointer && node->decl->val->tag == Code) {
+                p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, true));
+                t_block(node->decl->val->code);
+            } else {
+                p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, false));
+                p(" = ");
+                t_initializer(node->decl->val, decl->type);
+
+                if (freeform) { p("; "); }
+                else          { p(";\n"); }
+            }
         } else {
-            p(";\n");
+            if (top_level && decl->type->tag == FunPointer) {
+                p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, true));
+
+                if (freeform) { p("; "); }
+                else          { p(";\n"); }
+            } else {
+                p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, false));
+                if (freeform) { p("; "); }
+                else          { p(";\n"); }
+            }
         }
         node = node->next;
     }
@@ -884,7 +1069,7 @@ void t_statement(struct Statement *stat) {
                 exit(1);
             }
             
-            t_declaration(stat->i->for_stat_decl.init, true /*freeform: no newlines and no indents*/);
+            t_declaration(stat->i->for_stat_decl.init, true /*freeform: no newlines and no indents*/, false /*top_level*/);
             t_expr(stat->i->for_stat_decl.clause);
             p("; ");
             if (stat->i->for_stat_decl.update != NULL)
@@ -936,7 +1121,7 @@ void transpile(struct TopLevel *top) {
 
             buffer_list = create_buffer();
             current_buffer = buffer_list;
-            t_declaration(top->decl, false);
+            t_declaration(top->decl, false, true /*top_level*/);
             print_buffer_list(buffer_list);
             destroy_buffer_list(buffer_list);
 
