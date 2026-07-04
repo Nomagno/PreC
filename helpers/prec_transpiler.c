@@ -319,8 +319,21 @@ void dispatch_qualifiers(struct TypeBuffer *type_buffer, enum TypeSort tag, bool
             str_insert(type_buffer->left_buffer+type_buffer->left_buffer_pos, pos, "volatile ");
         if (is_restrict)
             str_insert(type_buffer->left_buffer+type_buffer->left_buffer_pos, pos, "restrict ");
-        if (is_const)
+        if (is_const) {
             str_insert(type_buffer->left_buffer+type_buffer->left_buffer_pos, pos, "const ");
+        } else {
+            // If there's a const, remove it
+            size_t size = strlen(type_buffer->left_buffer+type_buffer->left_buffer_pos);
+
+            if (((int)type_buffer->left_buffer_pos+(int)size-(int)strlen("const")-1) >= 0
+                &&
+                strncmp(type_buffer->left_buffer+type_buffer->left_buffer_pos+size-strlen("const")-1,
+                        "const",
+                        strlen("const")) == 0)
+            {
+                memcpy(type_buffer->left_buffer+type_buffer->left_buffer_pos+size-strlen("const")-1, "               ", strlen("const"));
+            }
+        }
     }
 }
 
