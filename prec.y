@@ -422,7 +422,7 @@ concrete_type
         { $$ = DUP_T(Type, TypeofExpr, .typeof_expr = $3); }
     | TYPEOF '<' type '>'
         { $$ = DUP_T(Type, TypeofType, .typeof_type = $3); }
-    | '@' IDENTIFIER /*Itentifier types are only for use with #c_include*/
+    | '@' IDENTIFIER /*Itentifier types are only for use with c_include*/
         { $$ = DUP_T(Type, CType, .c_type = $2); }
     | regular_type '&'
         { $$ = DUP_T(Type, Reference, .reference = $1); }

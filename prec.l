@@ -26,7 +26,7 @@ void comment(void);
 "//"[^\n]*              { /* consume //-comment */ }
 
 
-"#c_include"    { count(); return(C_INCLUDE); }
+"c_include"    { count(); return(C_INCLUDE); }
 "not"		    { count(); return(NOT); }
 "and"		    { count(); return(AND); }
 "xor"	    	{ count(); return(XOR); }
