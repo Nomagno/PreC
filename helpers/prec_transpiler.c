@@ -1121,6 +1121,8 @@ void t_statement(struct Statement *stat) {
             if (stat->i->for_stat_decl.update != NULL)
                 t_expr(stat->i->for_stat_decl.update);
 
+            p(")");
+
             if (stat->i->for_stat_decl.stat->tag == Block) {
                 t_statement(stat->i->for_stat_decl.stat);
             } else {
@@ -1139,6 +1141,8 @@ void t_statement(struct Statement *stat) {
             p("; ");
             if (stat->i->for_stat_expr.update != NULL)
                 t_expr(stat->i->for_stat_expr.update);
+
+            p(")");
 
             if (stat->i->for_stat_expr.stat->tag == Block) {
                 t_statement(stat->i->for_stat_expr.stat);

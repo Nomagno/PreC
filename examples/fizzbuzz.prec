@@ -1,0 +1,21 @@
+c_include "stdio.h"
+
+i32 (&)(void) main = ${
+    for (mut i32 i = 1; i <= 100; i++) {
+        mut bool printed = 0;
+        if (i % 3 == 0) {
+            printf("fizz");
+            printed = 1;
+        }
+        if (i % 5 == 0) {
+            printf("buzz");
+            printed = 1;
+        }
+
+        if (!printed) {
+            printf("%d", i);
+        }
+
+        printf("\n");
+    }
+};
