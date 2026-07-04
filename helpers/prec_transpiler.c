@@ -57,7 +57,8 @@ struct BufferList *current_buffer;
 #define REWIND_LIST(_name) do { while (_name->prev != NULL) { _name = _name->prev; } } while(0)
 
 struct BufferList *create_buffer(void) {
-    struct BufferList *retval = malloc(sizeof(struct BufferList));
+    struct BufferList *retval = calloc(sizeof(struct BufferList), 1);
+    retval->next = NULL;
     retval->size = 0;
     retval->buf = NULL;
     retval->stream = open_memstream(&retval->buf, &retval->size);
@@ -148,7 +149,42 @@ bool hasRestrict(QualifierBitVector q) { return q & Restrict; }
 // in the left stack, right == inner
 // in the right stack, left == inner
 
-void t_internal_type(struct Type *x, FILE *stream) {
+// a stack might not be the right analogy, what Miss Mull said is this:
+// >> Add another layer of parens every time you switch from left to right, always put the basic type on the far left, qualifier placement is finnicky...
+// so probably gotta add a marker in the dispatch when this condition happens, to insert parentheses where appropiate (when switching from right to left buffers)
+
+struct TypeBuffer {
+    char *buf; // where the full type will be composed, holds the base type too
+    size_t size;
+    FILE *stream; // stream associated to the buffer
+    
+
+    size_t left_buffer_pos;
+    char left_buffer[1024];
+
+    size_t right_buffer_pos;
+    char right_buffer[1024];
+};
+
+struct TypeBuffer *new_type_buffer(void) {
+    struct TypeBuffer *retval = calloc(sizeof(struct TypeBuffer), 1);
+    retval->stream = open_memstream(&retval->buf, &retval->size);
+    // last byte left unused for implicit null terminator
+    retval->left_buffer_pos = sizeof(retval->left_buffer)-2;
+    // last byte left unused for implicit null terminator
+    retval->right_buffer_pos = sizeof(retval->right_buffer)-2;
+    return retval;
+}
+
+#define p_t(...) {\
+    int s = fprintf(type_buffer->stream, __VA_ARGS__);\
+    fflush(current_buffer->stream);\
+    if (s == -1)\
+        err(EXIT_FAILURE, "fprintf");\
+}
+
+
+void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
     switch (x->tag) {
     // Compound types: qualifiers, references, function pointers, arrays
     case Qualifier:
@@ -156,7 +192,7 @@ void t_internal_type(struct Type *x, FILE *stream) {
             // in C, there isn't a mut qualifier, there's a const qualifier,
             // so if we're just a mut then take ourselves out of the picture
             *x = *x->qualifier.t;
-            t_internal_type(x, stream);
+            t_internal_type(x, type_buffer);
         } else if (x->qualifier.t->tag == Array) {
             // arrays can't have qualifiers in C, instead apply them to the
             // inner elements
@@ -178,59 +214,59 @@ void t_internal_type(struct Type *x, FILE *stream) {
                 inner_ptr->qualifier.t = inner->qualifier.t;
                 free(inner);
             }
-            t_internal_type(x, stream);
+            t_internal_type(x, type_buffer);
         } else {
-            t_internal_type(x->qualifier.t, stream);
+            t_internal_type(x->qualifier.t, type_buffer);
             // dispatch_qualifiers(x->qualifier.qualifiers BUT reversing mut to get constness)
         }
         break;
     case Reference:
-        t_internal_type(x->reference, stream);
+        t_internal_type(x->reference, type_buffer);
         // dispatch_pointer()
         // dispatch_qualifiers(const)
         break;
     case Array:
-        t_internal_type(x->array.t, stream);
+        t_internal_type(x->array.t, type_buffer);
         // dispatch_array(index_const_expression)
         break;
     case FunPointer:
-        t_internal_type(x->fun_pointer.return_type, stream);
+        t_internal_type(x->fun_pointer.return_type, type_buffer);
         // dispatch_pointer()
         // dispatch_function(type_parameter_list)
         break;
 
     // Base types
     case CType:
-        fprintf(stream, "@%s", x->c_type);
+        p_t("@%s", x->c_type);
         break;
-    case f64: fprintf(stream, "double"); break;
-    case f32: fprintf(stream, "float"); break;
-    case u64: fprintf(stream, "long unsigned"); break;
-    case i64: fprintf(stream, "long signed"); break;
-    case u32: fprintf(stream, "unsigned"); break;
-    case i32: fprintf(stream, "signed"); break;
-    case u16: fprintf(stream, "short unsigned"); break;
-    case i16: fprintf(stream, "short signed"); break;
-    case u8: fprintf(stream, "unsigned char"); break;
-    case i8: fprintf(stream, "signed char"); break;
-    case Void: fprintf(stream, "void"); break;
-    case Bool: fprintf(stream, "_Bool"); break;
+    case f64: p_t("double"); break;
+    case f32: p_t("float"); break;
+    case u64: p_t("long unsigned"); break;
+    case i64: p_t("long signed"); break;
+    case u32: p_t("unsigned"); break;
+    case i32: p_t("signed"); break;
+    case u16: p_t("short unsigned"); break;
+    case i16: p_t("short signed"); break;
+    case u8: p_t("unsigned char"); break;
+    case i8: p_t("signed char"); break;
+    case Void: p_t("void"); break;
+    case Bool: p_t("_Bool"); break;
     case TypeofExpr: {
-        fprintf(stream, "typeof(");
+        p_t("typeof(");
 
         struct BufferList *saved_buffer = current_buffer;
 
-        current_buffer = &(struct BufferList){ .stream = stream };
+        current_buffer = &(struct BufferList){ .stream = type_buffer->stream };
 
         t_expr(x->typeof_expr);
 
         current_buffer = saved_buffer;
 
-        fprintf(stream, ")");
+        p_t(")");
         break;
     }
     case TypeofType: {
-        fprintf(stream, "typeof<%s>", t_str_type(x->typeof_type, NULL, false));
+        p_t("typeof<%s>", t_str_type(x->typeof_type, NULL, false));
         break;
     }
     case Struct:
@@ -238,57 +274,54 @@ void t_internal_type(struct Type *x, FILE *stream) {
     case Union:
         break;
     case Enum:
-        fprintf(stream, "enum ");
+        p_t("enum ");
         if (x->enum_def.name != NULL) {
-            fprintf(stream, "%s ", x->enum_def.name);
+            p_t("%s ", x->enum_def.name);
         }
         if (x->enum_def.values != NULL) {
-            fprintf(stream, "{\n");
+            p_t("{\n");
             global_indent_level += 1;
 
             struct EnumeratorList *node = x->enum_def.values;
             REWIND_LIST(node);
             while (node != NULL) {
-                tabs_custom(stream);
-                fprintf(stream, "%s", node->val->name);
+                tabs_custom(type_buffer->stream);
+                p_t("%s", node->val->name);
                 if (node->val->val != NULL) {
-                    fprintf(stream, "=");
+                    p_t("=");
 
                     struct BufferList *saved_buffer = current_buffer;
 
-                    current_buffer = &(struct BufferList){ .stream = stream };
+                    current_buffer = &(struct BufferList){ .stream = type_buffer->stream };
 
                     t_expr(node->val->val->expr);
 
                     current_buffer = saved_buffer;
                 }
                 if (node->next != NULL)
-                    fprintf(stream, ",");
+                    p_t(",");
                 node = node->next;
 
-                fprintf(stream, "\n");
+                p_t("\n");
             }
 
             global_indent_level -= 1;
 
-            tabs_custom(stream);
-            fprintf(stream, "}");
+            tabs_custom(type_buffer->stream);
+            p_t("}");
         }
         break;
     }
-    fprintf(stream, " ");
+    p_t(" ");
 }
 
 // - If identifier is NULL, an abstract generator will be generated.
 // - If fun_pointer_dereferenced is true, and the type is a function pointer,
 //   then the translation will be done as if it was a function instead of a pointer (no innermost pointer).
 char *t_str_type(struct Type *x, char *identifier, bool fun_pointer_dereferenced) {
-    size_t size = 0;
-    char *buffer = NULL;
-    FILE *buffer_stream = open_memstream(&buffer, &size);
-    //setbuf(buffer_stream, NULL);
+    struct TypeBuffer *type_buffer = new_type_buffer();
 
-    t_internal_type(x, buffer_stream);
+    t_internal_type(x, type_buffer);
 
     /*// TODO: PLACEHOLDER CODE
     if (identifier != NULL)
@@ -297,9 +330,9 @@ char *t_str_type(struct Type *x, char *identifier, bool fun_pointer_dereferenced
         fprintf(buffer_stream, "int");
     // TODO: END OF PLACEHOLDER CODE*/
 
-    fclose(buffer_stream);
+    fclose(type_buffer->stream);
 
-    return buffer;
+    return type_buffer->buf;
 }
 
 /*freeform: no newlines and no indents*/
@@ -897,13 +930,19 @@ void transpile(struct TopLevel *top) {
             printf("\n#include %s\n", top->c_include);
             break;
         case Decl:
+            buffer_list = NULL;
+            current_buffer = NULL;
+            global_indent_level = 0;
+
             buffer_list = create_buffer();
             current_buffer = buffer_list;
             t_declaration(top->decl, false);
             print_buffer_list(buffer_list);
             destroy_buffer_list(buffer_list);
+
             buffer_list = NULL;
             current_buffer = NULL;
+            global_indent_level = 0;
             break;
         }
         top = top->next;
