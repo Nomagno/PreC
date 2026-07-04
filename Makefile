@@ -1,8 +1,8 @@
-prec: prec_main.c prec.tab.c prec.tab.h lex.yy.c helpers/*.c helpers/*.h
+prec_internal: prec_main.c prec.tab.c prec.tab.h lex.yy.c helpers/*.c helpers/*.h
 	gcc -g lex.yy.c prec_main.c prec.tab.c helpers/*.c -lfl -o prec_internal
 prec.tab.c prec.tab.h: prec.y
 	bison -d -v prec.y
 lex.yy.c:prec.l
 	flex prec.l
 clean:
-	rm -f prec_internal lex.yy.c prec.tab.c prec.tab.h prec.output examples/*.tmp.* examples/*.tmp examples/*.c examples/*.h a.out
+	rm -f prec_internal lex.yy.c prec.tab.c prec.tab.h prec.output examples/*.tmp.* examples/*.tmp examples/*.c examples/*.h *.tmp.* *.tmp .tmp .tmp.c a.out *.prec.c *.o

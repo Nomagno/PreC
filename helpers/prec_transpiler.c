@@ -276,6 +276,16 @@ void dispatch_pointer(struct TypeBuffer *type_buffer) {
     type_buffer->last_written_to_buffer = Left;
 }
 
+char *str_insert(char *dest, size_t pos, char const *src) {
+    size_t src_len = strlen(src);
+    size_t dest_len = strlen(dest);
+
+    memmove(dest + pos, dest + pos + src_len, dest_len - pos + 1);
+    memcpy(dest + pos, src, src_len);
+
+    return dest;
+}
+
 // How it works: const will always be dispatched unless what is being dispatched is a mut
 // a mut cancels a nearby const
 void dispatch_qualifiers(struct TypeBuffer *type_buffer, enum TypeSort tag, bool is_const, bool is_restrict, bool is_volatile) {
@@ -290,11 +300,27 @@ void dispatch_qualifiers(struct TypeBuffer *type_buffer, enum TypeSort tag, bool
         if (is_volatile)
             type_buffer->base_type_qualifiers |= Volatile;
     } else {
+        unsigned pos = 0;
         if (type_buffer->left_buffer[type_buffer->left_buffer_pos] == '(') {
-            // insert qualifiers at left_buffer_pos+2
+            pos = 2;
         } else if (type_buffer->left_buffer[type_buffer->left_buffer_pos] == '*') {
-            // insert qualifiers at left_buffer_pos+1
+            pos = 1;
+        } else {
+            // No, we don't actually error out, we want to be able to gracefully handle this one as dispatch_qualifiers is used in more places than needed
+            // on purpose:
+            
+            //fprintf(stderr, "Compiler internal precondition violation: Don't know how to parse this internal type left buffer: %s.\n",
+            //    type_buffer->left_buffer+type_buffer->left_buffer_pos);
+            //assert(false);
+            return;
         }
+        // insert qualifiers
+        if (is_volatile)
+            str_insert(type_buffer->left_buffer+type_buffer->left_buffer_pos, pos, "volatile ");
+        if (is_restrict)
+            str_insert(type_buffer->left_buffer+type_buffer->left_buffer_pos, pos, "restrict ");
+        if (is_const)
+            str_insert(type_buffer->left_buffer+type_buffer->left_buffer_pos, pos, "const ");
     }
 }
 
@@ -528,9 +554,16 @@ char *t_str_type(struct Type *x, char *identifier, bool fun_pointer_dereferenced
         // To dereference, just remove the innermost pointer, which must always exist for a function pointer
         assert(x->tag == FunPointer);
         size_t size = strlen(type_buffer->left_buffer+type_buffer->left_buffer_pos);
-        assert(type_buffer->left_buffer[type_buffer->left_buffer_pos+size-1] == '*');
-        type_buffer->left_buffer[type_buffer->left_buffer_pos+size-1] = ' ';
-        type_buffer->left_buffer[sizeof(type_buffer->left_buffer)-2] = '\0';
+
+        assert(((int)type_buffer->left_buffer_pos+(int)size-(int)strlen("*const")-1) >= 0);
+        if (strncmp(type_buffer->left_buffer+type_buffer->left_buffer_pos+size-strlen("*const")-1,
+                    "*const",
+                    strlen("*const")) != 0) {
+            fprintf(stderr, "Compiler error: Function must be dereferenced but can't.\n");
+            exit(1);
+        }
+        memcpy(type_buffer->left_buffer+type_buffer->left_buffer_pos+size-strlen("*const")-1, "               ", strlen("*const"));
+
     }
     p_t("%s", type_buffer->left_buffer+type_buffer->left_buffer_pos);
     if (identifier != NULL) {
@@ -648,7 +681,7 @@ void t_initializer(struct Initializer *x, struct Type *t) {
         int saved_indent = global_indent_level;
         global_indent_level = 0;
 
-        struct BufferList *buffer_saved = current_buffer;
+        struct BufferList *saved_buffer = current_buffer;
         struct BufferList *tmp = buffer_list;
 
         buffer_list = create_buffer();
@@ -667,7 +700,7 @@ void t_initializer(struct Initializer *x, struct Type *t) {
         // print the code itself
         t_block(x->code);
 
-        current_buffer = buffer_saved;
+        current_buffer = saved_buffer;
         global_indent_level = saved_indent;
         p("&%s", unique_temporary_identifier);
         break;
