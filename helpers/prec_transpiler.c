@@ -409,7 +409,7 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
 
     // Base types
     case CType:
-        p_t("@%s", x->c_type);
+        p_t("%s", x->c_type);
         break;
     case f64: p_t("double"); break;
     case f32: p_t("float"); break;
