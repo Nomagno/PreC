@@ -960,7 +960,8 @@ void t_statement(struct Statement *stat) {
         break;
     case Expr:
         tabs();
-        t_expr(stat->e);
+        if (stat->e != NULL)
+            t_expr(stat->e);
         p(";\n");
         break;
     case Selection:
