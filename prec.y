@@ -1,6 +1,7 @@
 %expect 1
 
 %{
+    #include <stdio.h>
     #include <stdlib.h>
 
     #include "helpers/prec_ast.h"
@@ -101,6 +102,7 @@
 
 %type <top_level> top_level translation_unit;
 
+%type <string_literal> string_literal_list
 
 %token <float_constant> FLOAT_CONSTANT
 %token <int_constant> INT_CONSTANT
@@ -142,11 +144,18 @@ primary_expression
 	    { $$ = DUP_T(Expr, Int, .int_num = $1); }
 	| FLOAT_CONSTANT
 	    { $$ = DUP_T(Expr, Float, .fp_num = $1); }
-	| STRING_LITERAL
+	| string_literal_list
 	    { $$ = DUP_T(Expr, String, .string = $1); }
 	| '(' expression ')'
 	    { $$ = $2; }
 	;
+
+string_literal_list
+    : STRING_LITERAL
+      { $$ = $1; }
+    | string_literal_list STRING_LITERAL
+      { asprintf(&$$, "%s%s", $1, $2); free($1); free($2); }
+    ;
 
 postfix_expression
 	: primary_expression
