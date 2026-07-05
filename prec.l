@@ -70,7 +70,12 @@ void comment(void);
 0[xX]{H}+{IS}?		{ count(); yylval.int_constant = atoll(yytext); return(INT_CONSTANT); }
 0[0-7]*{IS}?		{ count(); yylval.int_constant = atoll(yytext); return(INT_CONSTANT); }
 [1-9]{D}*{IS}?		{ count(); yylval.int_constant = atoll(yytext); return(INT_CONSTANT); }
-L?'(\\.|[^\\'\n])+'	{ count(); yylval.int_constant = atoll(yytext); return(INT_CONSTANT); }
+
+
+'(\\.|[^\\'\n])+'	{
+    /*TODO: support wide characters*/
+    /*L'(\\.|[^\\'\n])+' { ... }*/
+                     count(); yylval.int_constant = *(yytext+1); return(INT_CONSTANT); }
 
 {D}+{E}{FS}?		{ count(); yylval.float_constant = atof(yytext); return(FLOAT_CONSTANT); }
 {D}*"."{D}+{E}?{FS}?	{ count(); yylval.float_constant = atof(yytext); return(FLOAT_CONSTANT); }
