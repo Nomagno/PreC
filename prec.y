@@ -278,7 +278,9 @@ expression
 
 
 const_declaration
-    : type ';'
+    : ';'
+        { $$ = NULL; }
+    | type ';'
         { $$ = DUP((struct ConstDeclaration){ .type = $1, .vars = NULL}); }
     | type const_var_list ';'
         { $$ = DUP((struct ConstDeclaration){ .type = $1, .vars = $2}); }

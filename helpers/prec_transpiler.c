@@ -389,16 +389,19 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
         unsigned arg_i = 0;
         char *arg_list[65] = {0};
         struct TypeParamList *node = x->fun_pointer.param_list;
-        REWIND_LIST(node);
-        while (node != NULL) {
-            // We substract 1 because cell at index 64 will be used for implicit null termination
-            if (arg_i >= sizeof(arg_list)/sizeof(char *)-1) {
-                fprintf(stderr, "Compiler error: Function definitions can't have more than 64 arguments (uh, wtf?)\n");
-                exit(1);
+
+        if (node != NULL) {
+            REWIND_LIST(node);
+            while (node != NULL) {
+                // We substract 1 because cell at index 64 will be used for implicit null termination
+                if (arg_i >= sizeof(arg_list)/sizeof(char *)-1) {
+                    fprintf(stderr, "Compiler error: Function definitions can't have more than 64 arguments (uh, wtf?)\n");
+                    exit(1);
+                }
+                arg_list[arg_i] = t_str_type(node->param->type, node->param->name, false);
+                node = node->next;
+                arg_i += 1;
             }
-            arg_list[arg_i] = t_str_type(node->param->type, node->param->name, false);
-            node = node->next;
-            arg_i += 1;
         }
 
         dispatch_function(type_buffer, arg_list);
@@ -466,6 +469,11 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
             struct ConstDeclarationList *node = x->struct_or_union_def.declarations;
             REWIND_LIST(node);
             while (node != NULL) {
+                if (node->decl == NULL) {
+                    node = node->next;
+                    continue;
+                }
+                
                 struct ConstVarList *var_node = node->decl->vars;
                 if (var_node != NULL) {
                     REWIND_LIST(var_node);
