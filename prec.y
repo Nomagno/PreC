@@ -677,7 +677,7 @@ int yyerror(const char *s)
         char line[1024];
         while (fgets(line, sizeof(line), local_file) != NULL) {
             if ((yylineno == 0 && count == 0) || (yylineno > 0 && count == yylineno-1) || (yylineno > 1 && count == yylineno-2)) {
-                printf("%s", line);
+                fprintf(stderr, "%s", line);
                 count += 1;
             } else {
                 count += 1;
@@ -685,7 +685,7 @@ int yyerror(const char *s)
         }
         fclose(local_file);
     }
-	printf("%*s\n%*s\n", column, "^", column, s);
+	fprintf(stderr, "%*s\n%*s\n", column, "^", column, s);
     fprintf(stderr, "Error near line %d\n", yylineno);
 	return 1;
 }
