@@ -25,9 +25,9 @@
 //      | -> OR
 //      ^ -> XOR
 //      + (unary) -> [ELIMINATED]
-//      ~ (bitwise) -> NOT
+//      ~ (bitwise) -> BNOT
 //      - (unary) -> ~
-//      & (bitwise) -> AND
+//      & (bitwise) -> BAND
 //      Reference operator: &
 //      Dereference operator: ^
 // - +=, *=, etc, all gone
