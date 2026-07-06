@@ -1,50 +1,50 @@
 #!/bin/sh
 
+# replace with the asolute path to the directory that contains prec_internal if installing this script
+path=$(dirname "$0")
+
 args=''
 
-if [ $1 = "-transpile" ]; then
+process() {
+    file=$(basename "$1")
+    ext=$2
+    (cpp "$1" | grep -v '^# ')                  > "$file".tmp        \
+    && ("$path"/prec_internal "$file".tmp)            > "$file".tmp."$ext" \
+    && (cpp "$file".tmp."$ext" | grep -v '^# ') > "$file"."$ext"
+}
+
+cleanup() {
+    file=$(basename "$1")
+    ext=$2
+    rm -f "$file".tmp "$file".tmp."$ext"
+}
+
+transpile=FALSE
+
+if [ "$1" = "-transpile" ]; then
     shift
-    for i in $@; do
-        if echo $i | grep -q '.prec$'; then
-            locali=$(basename $i)
-            (cpp $i | grep -v '^# ' ) > $locali.tmp &&
-            (./prec_internal $locali.tmp; ) > $locali.tmp.c &&
-            (cpp $locali.tmp.c | grep -v '^# ' ) > $locali.c &&
-            rm $locali.tmp && rm $locali.tmp.c
-        elif echo $i | grep -q '.preh$'; then
-            locali=$(basename $i)
-            (cpp $i | grep -v '^# ' ) > $locali.tmp &&
-            (./prec_internal $locali.tmp; ) > $locali.tmp.h &&
-            (cpp $locali.tmp.h | grep -v '^# ' ) > $locali.h &&
-            rm $locali.tmp && rm $locali.tmp.h
+    transpile=TRUE
+fi
+
+for i in "$@"; do
+    if echo "$i" | grep -q '.prec$'; then
+        if ! process "$i" c; then exit 1; fi
+        cleanup "$i" c
+        if [ $transpile = FALSE ]; then
+            args=$args' '\'"$(basename "$i")".c\'
         fi
-    done
-else
-    for i in $@; do
-        if echo $i | grep -q '.prec$'; then
-            locali=$(basename $i)
-            (cpp $i | grep -v '^# ' ) > $locali.tmp &&
-            (./prec_internal $locali.tmp; ) > $locali.tmp.c &&
-            (cpp $locali.tmp.c | grep -v '^# ' ) > $locali.c &&
-            rm $locali.tmp && rm $locali.tmp.c
-            if [ $? -ne 0 ]; then
-                exit
-            fi
-            args=$args" "$locali.c
-        elif echo $i | grep -q '.preh$'; then
-            locali=$(basename $i)
-            (cpp $i | grep -v '^# ' ) > $locali.tmp &&
-            (./prec_internal $locali.tmp; ) > $locali.tmp.h &&
-            (cpp $locali.tmp.h | grep -v '^# ' ) > $locali.h &&
-            rm $locali.tmp && rm $locali.tmp.h
-            if [ $? -ne 0 ]; then
-                exit
-            fi
-            args=$args" "$locali.h
-        else 
-            args=$args" "$i
+    elif echo "$i" | grep -q '.preh$'; then
+        if ! process "$i" h; then exit 1; fi
+        cleanup "$i" h
+        if [ $transpile = FALSE ]; then
+            args=$args' '\'"$(basename "$i")".h\'
         fi
-    done
-    echo cc $args
-    cc $args
+    else
+        args=$args' '\'"$i"\'
+    fi
+done
+
+if [ $transpile = FALSE ]; then
+    echo "cc $args"
+    eval "cc $args"
 fi
