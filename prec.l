@@ -27,10 +27,10 @@ void comment(void);
 
 
 "c_include"    { count(); return(C_INCLUDE); }
-"not"		    { count(); return(NOT); }
-"and"		    { count(); return(AND); }
-"xor"	    	{ count(); return(XOR); }
-"or"    		{ count(); return(OR); }
+"bnot"		    { count(); return(NOT); }
+"band"		    { count(); return(AND); }
+"bxor"	    	{ count(); return(XOR); }
+"bor"    		{ count(); return(OR); }
 "break"			{ count(); return(BREAK); }
 "case"			{ count(); return(CASE); }
 "mut"			{ count(); return(MUT); }

@@ -7,7 +7,7 @@ Its major features include:
 - Anonymous function literal syntax (no variable capture): `<return_type (&)(args)> ${ ... }`
 - No function definition/declaration syntax: instead assign anonymous functions to global function pointer variables.
 - Properly context free grammar, no lexer hack.
-- Fully non-overloaded operators: unary minus `-a` replaced with `~a`, dereference operator is now `^`, *bitwise* operations are now `and` `or` `xor` `not`.
+- Fully non-overloaded operators: unary minus `-a` replaced with `~a`, dereference operator is now `^`, *bitwise* operations are now `band` `bor` `bxor` `bnot`.
 - Postfix type syntax with no need for parentheses.
 - Bitwise operator symbols.
 - "Declaration reflects use" is gone, types must now appear fully before identifiers.
