@@ -29,4 +29,4 @@ PreC currently has a four-stage translation process:
 - Run `make` to compile. You may now use `precc.sh` like you would use any other C compiler. It will detect any `.prec` and `.preh` files in the arguments, convert them to `.c`/`.h` versions, and pass them along to the `cc` command.
 
 # Installation (Unix-like systems):
-- `make install` will install the `precc` command to your user binary directory.
+- `make install` will install the `precc` command to your user binary directory. It will refer to the absolute path of the `prec_internal` binary of the PreC source code directory, so don't get rid of it!
