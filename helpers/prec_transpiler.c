@@ -482,6 +482,12 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
 
                         current_buffer = &(struct BufferList){ .stream = type_buffer->stream };
 
+                        // Struct members are always implicitly mut
+                        if (node->decl->type->tag == Qualifier) {
+                            node->decl->type->qualifier.qualifiers |= Mut;
+                        } else {
+                            node->decl->type = DUP_T(Type, Qualifier, .qualifier = { .qualifiers = Mut, .t = node->decl->type});
+                        }
                         tabs_custom(type_buffer->stream);
                         p_t("%s", t_str_type(node->decl->type, var_node->decl->name, false));
                         p_t(";\n");
