@@ -276,14 +276,17 @@ void dispatch_pointer(struct TypeBuffer *type_buffer) {
     type_buffer->last_written_to_buffer = Left;
 }
 
-char *str_insert(char *dest, size_t pos, char const *src) {
-    size_t src_len = strlen(src);
-    size_t dest_len = strlen(dest);
+void str_insert(char dest[], const char src[], size_t pos) {
+    char *buf = calloc(strlen(dest)+strlen(src)+2, 1);
+    size_t len = 0;
 
-    memmove(dest + pos, dest + pos + src_len, dest_len - pos + 1);
-    memcpy(dest + pos, src, src_len);
+    strncpy(buf, dest, pos);
+    len += pos;
+    strncpy(buf+len, src, strlen(src));
+    len += strlen(src);
+    strncpy(buf+len, dest+pos, strlen(dest)-pos);
 
-    return dest;
+    strncpy(dest, buf, strlen(buf));
 }
 
 // How it works: const will always be dispatched unless what is being dispatched is a mut
@@ -314,13 +317,23 @@ void dispatch_qualifiers(struct TypeBuffer *type_buffer, enum TypeSort tag, bool
             //assert(false);
             return;
         }
+
         // insert qualifiers
-        if (is_volatile)
-            str_insert(type_buffer->left_buffer+type_buffer->left_buffer_pos, pos, "volatile ");
-        if (is_restrict)
-            str_insert(type_buffer->left_buffer+type_buffer->left_buffer_pos, pos, "restrict ");
         if (is_const) {
-            str_insert(type_buffer->left_buffer+type_buffer->left_buffer_pos, pos, "const ");
+            // If there's already a const, do nothing
+            size_t size = strlen(type_buffer->left_buffer+type_buffer->left_buffer_pos);
+
+            if (((int)type_buffer->left_buffer_pos+(int)size-(int)strlen("const")-1) >= 0
+                &&
+                strncmp(type_buffer->left_buffer+type_buffer->left_buffer_pos+size-strlen("const")-1,
+                        "const",
+                        strlen("const")) == 0)
+            {
+                ;
+            } else {
+                str_insert(type_buffer->left_buffer+type_buffer->left_buffer_pos, "const ", pos);
+            }
+
         } else {
             // If there's a const, remove it
             size_t size = strlen(type_buffer->left_buffer+type_buffer->left_buffer_pos);
@@ -334,6 +347,11 @@ void dispatch_qualifiers(struct TypeBuffer *type_buffer, enum TypeSort tag, bool
                 memcpy(type_buffer->left_buffer+type_buffer->left_buffer_pos+size-strlen("const")-1, "               ", strlen("const"));
             }
         }
+
+        if (is_volatile)
+            str_insert(type_buffer->left_buffer+type_buffer->left_buffer_pos, "volatile ", pos);
+        if (is_restrict)
+            str_insert(type_buffer->left_buffer+type_buffer->left_buffer_pos, "restrict ", pos);
     }
 }
 
