@@ -260,7 +260,7 @@ void dispatch_array(struct TypeBuffer *type_buffer, struct Expr *expression) {
     type_buffer->right_buffer[type_buffer->right_buffer_pos] = '[';
 }
 
-// Dispath to left buffer
+// Dispatch to left buffer
 void dispatch_pointer(struct TypeBuffer *type_buffer) {
     if (type_buffer->last_written_to_buffer == Right) {
         type_buffer->left_buffer_pos -= 2;
@@ -375,7 +375,7 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
         dispatch_qualifiers(type_buffer, x->reference->tag, true, false, false);
 
         dispatch_pointer(type_buffer);
-        dispatch_qualifiers(type_buffer, false, true, false, false);
+        dispatch_qualifiers(type_buffer, Reference, true, false, false);
         break;
     case Array:
         t_internal_type(x->array.t, type_buffer);
@@ -407,7 +407,7 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
         dispatch_function(type_buffer, arg_list);
 
         dispatch_pointer(type_buffer);
-        dispatch_qualifiers(type_buffer, false, true, false, false);
+        dispatch_qualifiers(type_buffer, FunPointer, true, false, false);
         break;
 
     // Base types
