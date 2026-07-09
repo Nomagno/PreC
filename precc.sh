@@ -15,7 +15,7 @@ error_handling() {
             was_there_error=FALSE
         fi
         echo "$line" 2>&1
-    done < /dev/stdin
+    done
     if [ $was_there_error = TRUE ]; then
         exit 1
     fi
