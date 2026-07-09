@@ -694,7 +694,7 @@ int yyerror(const char *s)
         }
         fclose(local_file);
     }
-	fprintf(stderr, "%*s\n%*s\n", column, "^", column, s);
-    fprintf(stderr, "Error near line %d\n", yylineno);
+	fprintf(stderr, "%*s\n", column, "^");
+    fprintf(stderr, "%s:%d:%d: Error near indicated line: %s\n", filename, yylineno, column+1, s);
 	return 1;
 }

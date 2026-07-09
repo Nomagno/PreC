@@ -5,46 +5,71 @@ path=$(dirname "$0")
 
 args=''
 
-process() {
-    file=$(basename "$1")
-    ext=$2
-    (cpp "$1" | grep -v '^# ')                  > "$file".tmp        \
-    && ("$path"/prec_internal "$file".tmp)            > "$file".tmp."$ext" \
-    && (cpp "$file".tmp."$ext" | grep -v '^# ') > "$file"."$ext"
+error_handling() {
+    was_there_error=FALSE;
+    IFS=$(echo)
+    while read -r line; do
+        if echo "$line" | grep -q "^$1:"; then
+            was_there_error=TRUE
+        else
+            was_there_error=FALSE
+        fi
+        echo "$line" 2>&1
+    done < /dev/stdin
+    if [ $was_there_error = TRUE ]; then
+        exit 1
+    fi
 }
 
-cleanup() {
-    file=$(basename "$1")
-    ext=$2
-    rm -f "$file".tmp "$file".tmp."$ext"
+transpile() {
+    transpiler="$path"/prec_internal
+    if [ ! -e "$transpiler" ]; then
+        echo "$transpiler: not found, revise your PreC source directory (might have to run \`make\`)"
+        exit 1;
+    fi
+
+    tmp1=$(mktemp)
+
+    tmp2=$(mktemp)
+    mv "$tmp2" "$tmp2"."$ext"
+    tmp2=$tmp2.$ext
+
+    (cpp "$1" | grep -v '^# ')         > "$tmp1"   \
+    && ("$transpiler" "$tmp1") 3>&2 2>&1 1>"$output" | sed "s|^$tmp1:|$1:|g" | error_handling "$1"
 }
 
-transpile=FALSE
+transpile_flag=FALSE
 
 if [ "$1" = "-transpile" ]; then
     shift
-    transpile=TRUE
+    transpile_flag=TRUE
 fi
 
+process() {
+    output=$(basename "$i").$ext
+
+    if ! transpile "$i"; then
+        rm -f "$tmp1" "$tmp2"
+        exit 1;
+    fi
+    rm -f "$tmp1" "$tmp2"
+
+    args=$args' '\'"$output"\'
+}
+
 for i in "$@"; do
-    if echo "$i" | grep -q '.prec$'; then
-        if ! process "$i" c; then exit 1; fi
-        cleanup "$i" c
-        if [ $transpile = FALSE ]; then
-            args=$args' '\'"$(basename "$i")".c\'
-        fi
+    if   echo "$i" | grep -q '.prec$'; then
+         ext=c
+         process
     elif echo "$i" | grep -q '.preh$'; then
-        if ! process "$i" h; then exit 1; fi
-        cleanup "$i" h
-        if [ $transpile = FALSE ]; then
-            args=$args' '\'"$(basename "$i")".h\'
-        fi
+         ext=h
+         process
     else
         args=$args' '\'"$i"\'
     fi
 done
 
-if [ $transpile = FALSE ]; then
+if [ $transpile_flag = FALSE ]; then
     echo "cc $args"
     eval "cc $args"
 fi
