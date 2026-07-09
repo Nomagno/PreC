@@ -58,15 +58,19 @@ process() {
 }
 
 for i in "$@"; do
-    if   echo "$i" | grep -q '.prec$'; then
-         ext=c
-         process
-    elif echo "$i" | grep -q '.preh$'; then
-         ext=h
-         process
-    else
+    case "$i" in
+      *.prec)
+        ext=c
+        process
+        ;;
+      *.preh)
+        ext=h
+        process
+        ;;
+      *)
         args=$args' '\'"$i"\'
-    fi
+        ;;
+    esac
 done
 
 if [ $transpile_flag = FALSE ]; then
