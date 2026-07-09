@@ -14,7 +14,7 @@ error_handling() {
         else
             was_there_error=FALSE
         fi
-        echo "$line" 2>&1
+        echo "$line" 1>&2
     done
     if [ $was_there_error = TRUE ]; then
         exit 1
