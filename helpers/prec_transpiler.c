@@ -398,7 +398,11 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
     case Array:
         t_internal_type(x->array.t, type_buffer);
 
-        dispatch_array(type_buffer, x->array.size->expr);
+        if (x->array.size == NULL) {
+            dispatch_array(type_buffer, NULL);
+        } else {
+            dispatch_array(type_buffer, x->array.size->expr);
+        }
         break;
     case FunPointer:
         t_internal_type(x->fun_pointer.return_type, type_buffer);
@@ -931,6 +935,85 @@ void t_expr(struct Expr *x) {
     }
 }
 
+bool is_const_expr(struct Expr *x) {
+    if (x == NULL)
+        return false;
+
+    switch (x->tag) {
+    case SizeofType:
+        return true;
+    case Unary:
+        return is_const_expr(x->unOp.e);
+    case Binary:
+        return is_const_expr(x->binOp.e1) && is_const_expr(x->binOp.e2);
+    case FunctionCall:
+        return false;
+    case String:
+        return false;
+    case Identifier:
+        return false;
+        break;
+    case Float:
+        return true;
+    case Int:
+        return true;
+    case Ternary:
+        return is_const_expr(x->ternary.cond)
+            && is_const_expr(x->ternary.if_true)
+            && is_const_expr(x->ternary.if_false);
+    case Cast:
+        return is_const_expr(x->cast.e);
+    case CompoundLiteral:
+        return false;
+    case StructAccess:
+        return false;
+    case StructDeref:
+        return false;
+    }
+}
+
+bool is_const_sized_type(struct Type *x) {
+    if (x == NULL)
+        assert(!"NULL argument to is_const_sized_type");
+
+    switch (x->tag) {
+    case Qualifier:
+        return is_const_sized_type(x->qualifier.t);
+    case Array:
+        if (x->array.size == NULL) {
+            return true;
+        } else {
+            return is_const_sized_type(x->array.t)
+                && is_const_expr(x->array.size->expr);
+        }
+    case Reference:
+    case FunPointer:
+        return true;
+    // Base types
+    case CType:
+    case f64:
+    case f32:
+    case u64:
+    case i64:
+    case u32:
+    case i32:
+    case u16:
+    case i16:
+    case u8:
+    case i8:
+    case Void:
+    case Bool:
+    case Union:
+    case Struct:
+    case Enum:
+        return true;
+    case TypeofExpr:
+        return true;
+    case TypeofType:
+        return is_const_sized_type(x->typeof_type);
+    }
+}
+
 /*freeform: no newlines and no indents*/
 void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
     char *storage_class;
@@ -981,9 +1064,9 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
                 p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, false));
 
                 // in preC, all non-extern variables are zero-initialized by default if no initializer is specified
-                // TODO: check if it's a VLA (if any of the array types contained within are not 100% constant expressions). If it's the case, do not print the initializer
+                // Check if it's a VLA (if any of the array types contained within are not 100% constant expressions). If it's the case, do not print the initializer
                 // as it's illegal C99 to initialize a VLA
-                if (decl->class != Extern)
+                if (decl->class != Extern && is_const_sized_type(decl->type))
                     p(" = {0}");
 
                 if (freeform) { p("; "); }
