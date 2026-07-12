@@ -979,6 +979,13 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
                 else          { p(";\n"); }
             } else {
                 p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, false));
+
+                // in preC, all non-extern variables are zero-initialized by default if no initializer is specified
+                // TODO: check if it's a VLA (if any of the array types contained within are not 100% constant expressions). If it's the case, do not print the initializer
+                // as it's illegal C99 to initialize a VLA
+                if (decl->class != Extern)
+                    p(" = {0}");
+
                 if (freeform) { p("; "); }
                 else          { p(";\n"); }
             }
