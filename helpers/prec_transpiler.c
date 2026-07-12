@@ -763,7 +763,9 @@ void t_expr(struct Expr *x) {
         p("(");
         switch(x->unOp.tag) {
         case Sizeof:
-            p("sizeof("); t_expr(x->unOp.e);
+            p("sizeof(");
+            t_expr(x->unOp.e);
+            p(")");
             break;
         case Ref:
             p("&");      t_expr(x->unOp.e);
