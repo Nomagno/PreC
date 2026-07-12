@@ -1,9 +1,9 @@
 #!/bin/sh
 
-# replace with the asolute path to the directory that contains prec_internal if installing this script
-path=$(dirname "$0")
-
 args=''
+
+# ``make install"" will replace this with the base64 encoding of the prec_internal binary
+transpiler_code='REPLACE ME'
 
 error_handling() {
     was_there_error=FALSE;
@@ -22,7 +22,14 @@ error_handling() {
 }
 
 transpile() {
-    transpiler="$path"/prec_internal
+    if [ "$transpiler_code" = 'REPLACE ME' ]; then
+        transpiler=./prec_internal
+    else
+        transpiler=$(mktemp)
+        echo "$transpiler_code" | base64 -d -i > "$transpiler"
+        chmod +x "$transpiler"
+    fi
+
     if [ ! -e "$transpiler" ]; then
         echo "$transpiler: not found, revise your PreC source directory (might have to run \`make\`)"
         exit 1;
@@ -45,14 +52,21 @@ if [ "$1" = "-transpile" ]; then
     transpile_flag=TRUE
 fi
 
+cleanup() {
+    rm -f "$tmp1" "$tmp2"
+    if [ "$transpiler" != "./prec_internal" ]; then
+        rm -f "$transpiler";
+    fi
+}
+
 process() {
     output=$(basename "$i").$ext
 
     if ! transpile "$i"; then
-        rm -f "$tmp1" "$tmp2"
+        cleanup
         exit 1;
     fi
-    rm -f "$tmp1" "$tmp2"
+    cleanup
 
     args=$args' '\'"$output"\'
 }
