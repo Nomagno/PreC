@@ -1,4 +1,15 @@
-%expect 1
+%expect 4
+// We expect exactly 4 conflicts for the following reason:
+// Traditionally, in C, there is ONE shift/reduct conflict that appears in the grammar
+// this conflict is between IF and IF-ELSE, and the correct behaviour is to always shift,
+// which coincides with YACC/Bison's default behaviour. So we indicate that we expect ONE conflict.
+// In PreC, however, the C29 feature allowing to declare variables inside statements is added.
+// this makes it so that there are FOUR variants of an if statement, rather than one (and the corresponding if-else variants):
+// - if (expr) x else y;
+// - if (decl) x else y;
+// - if (decl;) x else y;
+// - if (decl; expr) x else y;
+// So we indicate that we expect FOUR conflicts.
 
 %{
     #include <stdio.h>
@@ -310,17 +321,17 @@ const_id_decl
     ;
 
 declaration
-    : storage_class type ';'
+    : storage_class type
         { $$ = DUP((struct Declaration) { .class = $1, .type = $2, .vars = NULL }); }
-    | storage_class type var_list ';'
+    | storage_class type var_list
         { $$ = DUP((struct Declaration) { .class = $1, .type = $2, .vars = $3 }); }
-    | storage_class type var_list ',' ';'
+    | storage_class type var_list ','
         { $$ = DUP((struct Declaration) { .class = $1, .type = $2, .vars = $3 }); }
-    | type ';'
+    | type
         { $$ = DUP((struct Declaration) { .class = None, .type = $1, .vars = NULL }); }
-    | type var_list ';'
+    | type var_list
         { $$ = DUP((struct Declaration) { .class = None, .type = $1, .vars = $2 }); }
-    | type var_list ',' ';'
+    | type var_list ','
         { $$ = DUP((struct Declaration) { .class = None, .type = $1, .vars = $2 }); }
     ;
 
@@ -602,7 +613,7 @@ block_item_list
 	;
 
 block_item
-	: declaration
+	: declaration ';'
 	    { $$ = DUP_T(BlockItem, Declaration, .decl = $1); }
 	| statement
 	    { $$ = DUP_T(BlockItem, Statement, .stat = $1); }
@@ -616,10 +627,28 @@ expression_statement
 	;
 
 selection_statement
-	: IF '(' expression ')' statement
+	: IF '(' declaration ')' statement
+	    { $$ = DUP_T(SelectionStatement, If, .simple_if = { .decl = $3, .action = $5 }); }
+	| IF '(' declaration ';' ')' statement
+	    { $$ = DUP_T(SelectionStatement, If, .simple_if = { .decl = $3, .action = $6 }); }
+	| IF '(' declaration ';' expression ')' statement
+	    { $$ = DUP_T(SelectionStatement, If, .simple_if = { .decl = $3, .clause = $5, .action = $7 }); }
+	| IF '(' expression ')' statement
 	    { $$ = DUP_T(SelectionStatement, If, .simple_if = { .clause = $3, .action = $5 }); }
+	| IF '(' declaration ')' statement ELSE statement
+	    { $$ = DUP_T(SelectionStatement, IfElse, .if_else = { .decl = $3, .action_true = $5, .action_false = $7 }); }
+	| IF '(' declaration ';' ')' statement ELSE statement
+	    { $$ = DUP_T(SelectionStatement, IfElse, .if_else = { .decl = $3, .action_true = $6, .action_false = $8 }); }
+	| IF '(' declaration ';' expression ')' statement ELSE statement
+	    { $$ = DUP_T(SelectionStatement, IfElse, .if_else = { .decl = $3, .clause = $5, .action_true = $7, .action_false = $9 }); }
 	| IF '(' expression ')' statement ELSE statement
 	    { $$ = DUP_T(SelectionStatement, IfElse, .if_else = { .clause = $3, .action_true = $5, .action_false = $7 }); }
+	| SWITCH '(' declaration ')' statement
+	    { $$ = DUP_T(SelectionStatement, Switch, .switch_stat = { .decl = $3, .block = $5 }); }
+	| SWITCH '(' declaration ';' ')' statement
+	    { $$ = DUP_T(SelectionStatement, Switch, .switch_stat = { .decl = $3, .block = $6 }); }
+	| SWITCH '(' declaration ';' expression ')' statement
+	    { $$ = DUP_T(SelectionStatement, Switch, .switch_stat = { .decl = $3, .clause = $5, .block = $7 }); }
 	| SWITCH '(' expression ')' statement
 	    { $$ = DUP_T(SelectionStatement, Switch, .switch_stat = { .clause = $3, .block = $5 }); }
 	;
@@ -634,10 +663,10 @@ iteration_statement
 	
 	| FOR '(' expression_statement expression_statement expression ')' statement
 	    { $$ = DUP_T(IterationStatement, For_Expr, .for_stat_expr = { .init = $3, .clause = $4, .update = $5, .stat = $7 }); }
-	| FOR '(' declaration expression_statement ')' statement
-	    { $$ = DUP_T(IterationStatement, For_Decl, .for_stat_decl = { .init = $3, .clause = $4, .stat = $6 }); }
-	| FOR '(' declaration expression_statement expression ')' statement
-	    { $$ = DUP_T(IterationStatement, For_Decl, .for_stat_decl = { .init = $3, .clause = $4, .update = $5, .stat = $7 }); }
+	| FOR '(' declaration ';' expression_statement ')' statement
+	    { $$ = DUP_T(IterationStatement, For_Decl, .for_stat_decl = { .init = $3, .clause = $5, .stat = $7 }); }
+	| FOR '(' declaration ';' expression_statement expression ')' statement
+	    { $$ = DUP_T(IterationStatement, For_Decl, .for_stat_decl = { .init = $3, .clause = $5, .update = $6, .stat = $8 }); }
 	;
 
 jump_statement
@@ -654,11 +683,11 @@ jump_statement
 	;
 
 translation_unit
-	: declaration
+	: declaration ';'
 	    { $$ = DUP_T(TopLevel, Decl, .decl = $1, .next = NULL); }
 	| C_INCLUDE STRING_LITERAL
 	    { $$ = DUP_T(TopLevel, CInclude, .c_include = $2, .next = NULL); }
-	| translation_unit declaration
+	| translation_unit declaration ';'
 	    { $1->next = DUP_T(TopLevel, Decl, .decl = $2, .prev = $1, .next = NULL); $$ = $1->next; }
 	| translation_unit C_INCLUDE STRING_LITERAL
 	    { $1->next = DUP_T(TopLevel, CInclude, .c_include = $3, .prev = $1, .next = NULL); $$ = $1->next; }

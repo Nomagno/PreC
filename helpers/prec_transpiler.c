@@ -1091,10 +1091,31 @@ void t_statement(struct Statement *stat) {
     case Selection:
         switch (stat->s->tag) {
         case If:
+            if (stat->s->simple_if.decl != NULL) {
+                tabs();
+                p("{");
+                p("\n");
+                global_indent_level += 1;
+                t_declaration(stat->s->simple_if.decl, false, false);
+            }
+
             tabs();
-            p("if (");
-            t_expr(stat->s->simple_if.clause);
+            p("if (")
+            if (stat->s->simple_if.clause != NULL) {
+                t_expr(stat->s->simple_if.clause);
+            } else if (stat->s->simple_if.decl != NULL
+                       && stat->s->simple_if.decl->vars != NULL
+                       && stat->s->simple_if.decl->vars->decl != NULL
+                       && stat->s->simple_if.decl->vars->decl->name != NULL) {
+                // If there's several variables in the declaration, this will always take the last
+                // as the clause
+                p("%s", stat->s->simple_if.decl->vars->decl->name);
+            } else {
+                assert(!"BAD! Declaration conditional clause with no variables e.g. if(i32) ...");
+            }
             p(")\n");
+
+
             if (stat->s->simple_if.action->tag == Block) {
                 t_statement(stat->s->simple_if.action);
             } else {
@@ -1102,12 +1123,41 @@ void t_statement(struct Statement *stat) {
                 t_statement(stat->s->simple_if.action);
                 global_indent_level -= 1;
             }
+
+
+            if (stat->s->simple_if.decl != NULL) {
+                global_indent_level -= 1;
+                p("\n");
+                tabs();
+                p("}\n");
+            }
             break;
         case IfElse:
+            if (stat->s->if_else.decl != NULL) {
+                tabs();
+                p("{");
+                p("\n");
+                global_indent_level += 1;
+                t_declaration(stat->s->if_else.decl, false, false);
+            }
+
             tabs();
-            p("if (");
-            t_expr(stat->s->if_else.clause);
+            p("if (")
+            if (stat->s->if_else.clause != NULL) {
+                t_expr(stat->s->if_else.clause);
+            } else if (stat->s->if_else.decl != NULL
+                       && stat->s->if_else.decl->vars != NULL
+                       && stat->s->if_else.decl->vars->decl != NULL
+                       && stat->s->if_else.decl->vars->decl->name != NULL) {
+                // If there's several variables in the declaration, this will always take the last
+                // as the clause
+                p("%s", stat->s->if_else.decl->vars->decl->name);
+            } else {
+                assert(!"BAD! Declaration conditional clause with no variables e.g. if(i32) ...");
+            }
             p(")\n");
+
+
             if (stat->s->if_else.action_true->tag == Block) {
                 t_statement(stat->s->if_else.action_true);
             } else {
@@ -1128,11 +1178,39 @@ void t_statement(struct Statement *stat) {
                 t_statement(stat->s->if_else.action_false);
                 global_indent_level -= 1;
             }
+
+
+            if (stat->s->if_else.decl != NULL) {
+                global_indent_level -= 1;
+                p("\n");
+                tabs();
+                p("}\n");
+            }
+
             break;
         case Switch:
+            if (stat->s->switch_stat.decl != NULL) {
+                tabs();
+                p("{");
+                p("\n");
+                global_indent_level += 1;
+                t_declaration(stat->s->switch_stat.decl, false, false);
+            }
+
             tabs();
             p("switch (")
-            t_expr(stat->s->switch_stat.clause);
+            if (stat->s->switch_stat.clause != NULL) {
+                t_expr(stat->s->switch_stat.clause);
+            } else if (stat->s->switch_stat.decl != NULL
+                       && stat->s->switch_stat.decl->vars != NULL
+                       && stat->s->switch_stat.decl->vars->decl != NULL
+                       && stat->s->switch_stat.decl->vars->decl->name != NULL) {
+                // If there's several variables in the declaration, this will always take the last
+                // as the clause
+                p("%s", stat->s->switch_stat.decl->vars->decl->name);
+            } else {
+                assert(!"BAD! Declaration conditional clause with no variables e.g. switch(i32) ...");
+            }
             p(")\n");
             if (stat->s->switch_stat.block->tag == Block) {
                 t_statement(stat->s->switch_stat.block);
@@ -1140,6 +1218,13 @@ void t_statement(struct Statement *stat) {
                 global_indent_level += 1;
                 t_statement(stat->s->switch_stat.block);
                 global_indent_level -= 1;
+            }
+
+            if (stat->s->switch_stat.decl != NULL) {
+                global_indent_level -= 1;
+                p("\n");
+                tabs();
+                p("}\n");
             }
         }
         break;

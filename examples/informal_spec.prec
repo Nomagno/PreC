@@ -7,11 +7,19 @@
 // - NO type coercion at all, must explicitly cast
 // - constness by default, ``mut'' to mutate
 // - struct autoderreference: no need to do a->x, just do a.x
-// - structs are zero-initialized
+// - all values are zero-initialized by default
 // - type casts and all syntactically similar operations now use angular brackets:
 //    - type casts <type>expression
 //    - compound literals <type> { ... }
 //    - function literals <type> ${ ... }
+
+// backport from C29: declaration in if statement:
+//   if (int val = some_func; val >= 0)
+//     printf("VALUE: %d\n", val);
+//   else
+//     printf("ERROR CODE: %d\n", -val);
+// the declaration allows multiple variables
+// if the expression is ommitted, then the LAST variable will be used as the clasue by itself
 
 // - no typedef:
 //      struct vector { i32 x, y; };

@@ -16,6 +16,7 @@ Its major features include:
 - `typeof` 'backported' from C23.
 - Custom-named C types may still be referenced with `@TypeName`.
 - `c_include` directive for direct usage of C headers, and hence perfect C library compatibility.
+- Backported 'declarations inside conditionals' (e.g. `if (i32 x = a; x < 50) { ... }`) from C29
 
 See `examples/informal_spec.rs` and the rest of examples for more details.
 

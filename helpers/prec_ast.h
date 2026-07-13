@@ -346,15 +346,18 @@ struct SelectionStatement {
     enum { If='i', IfElse='e', Switch='s' } tag;
     union {
         struct {
+            struct Declaration *decl;
             struct Expr *clause;
             struct Statement *action;
         } simple_if;
         struct {
+            struct Declaration *decl;
             struct Expr *clause;
             struct Statement *action_true;
             struct Statement *action_false;
         } if_else;
         struct {
+            struct Declaration *decl;
             struct Expr *clause;
             struct Statement *block;
         } switch_stat;
