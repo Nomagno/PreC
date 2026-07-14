@@ -18,6 +18,8 @@ Its major features include:
 - `c_include` directive for direct usage of C headers, and hence perfect C library compatibility.
 - Backported 'declarations inside conditionals' (e.g. `if (i32 x = a; x < 50) { ... }`) from C29
 - Supported types of integer constants: hexadecimal `0xDEADBEEF`, octal `0o34017`, decimal `999` `0999` (leading zeroes not treated as octal), binary `0b10100010`.
+- Removed: `+=`, `-=`, `|=`, etc.
+- Removed: `--`, `++`
 
 See `examples/informal_spec.rs` and the rest of examples for more details.
 

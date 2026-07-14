@@ -1,7 +1,7 @@
 c_include "stdio.h"
 
 i32 (&)(void) main = ${
-    for (mut i32 i = 1; i <= 100; i++) {
+    for (mut i32 i = 1; i <= 100; i=i+1) {
         mut bool printed = 0;
         if (i % 3 == 0) {
             printf("fizz");

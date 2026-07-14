@@ -44,10 +44,6 @@ enum UnOp {
     Neg='~',
     Not='n',
     BoolNot='!',
-    PreIncrement=C('p', '+'),
-    PreDecrement=C('p', '-'),
-    PostIncrement=C('+', '+'),
-    PostDecrement=C('-', '-'),
 };
 
 enum ExprType {

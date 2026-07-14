@@ -786,18 +786,6 @@ void t_expr(struct Expr *x) {
         case BoolNot:
             p("!");      t_expr(x->unOp.e);
             break;
-        case PreIncrement:
-            p("++");     t_expr(x->unOp.e);
-            break;
-        case PreDecrement:
-            p("--");     t_expr(x->unOp.e);
-            break;
-        case PostIncrement:
-                   t_expr(x->unOp.e); p("++");
-            break;
-        case PostDecrement:
-                   t_expr(x->unOp.e); p("--");
-            break;
         }
         p(")");
         break;

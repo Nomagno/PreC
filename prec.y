@@ -120,7 +120,7 @@
 %token <identifier> IDENTIFIER
 %token <string_literal> STRING_LITERAL
 %token SIZEOF TYPEOF
-%token PTR_OP INC_OP DEC_OP LEFT_OP RIGHT_OP LE_OP GE_OP EQ_OP NE_OP
+%token PTR_OP LEFT_OP RIGHT_OP LE_OP GE_OP EQ_OP NE_OP
 %token AND_OP OR_OP
 
 %token EXTERN STATIC RESTRICT MUT VOLATILE
@@ -183,10 +183,6 @@ postfix_expression
 	    { $$ = DUP_T(Expr, StructAccess, .struct_access_deref = { .e = $1, .member = $3}); }
 	| postfix_expression PTR_OP IDENTIFIER
 	    { $$ = DUP_T(Expr, StructDeref, .struct_access_deref = { .e = $1, .member = $3}); }
-	| postfix_expression INC_OP
-	    { $$ = UN_EXPR(PostIncrement, $1); }
-	| postfix_expression DEC_OP
-	    { $$ = UN_EXPR(PostDecrement, $1); }
 	| '<' type '>' compound_literal_initializer
 	    { $$ = DUP_T(Expr, CompoundLiteral, .compound_literal = { .type = $2, .init = $4 } ); }
 	;
@@ -201,10 +197,6 @@ argument_expression_list
 unary_expression
 	: postfix_expression
 	    { $$ = $1; }
-	| INC_OP unary_expression
-	    { $$ = UN_EXPR(PreIncrement, $2); }
-	| DEC_OP unary_expression
-	    { $$ = UN_EXPR(PreDecrement, $2); }
 	| NOT cast_expression
 	    { $$ = UN_EXPR(Not, $2); }
 	| '&' cast_expression

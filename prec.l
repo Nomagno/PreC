@@ -91,8 +91,6 @@ L?\"(\\.|[^\\"\n])*\"	{ count(); yylval.string_literal=strdup(yytext); return(ST
 "..."			{ count(); return(ELLIPSIS); }
 ">>"			{ count(); return(RIGHT_OP); }
 "<<"			{ count(); return(LEFT_OP); }
-"++"			{ count(); return(INC_OP); }
-"--"			{ count(); return(DEC_OP); }
 "->"			{ count(); return(PTR_OP); }
 "&&"			{ count(); return(AND_OP); }
 "||"			{ count(); return(OR_OP); }
