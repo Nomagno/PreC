@@ -67,9 +67,10 @@ void comment(void);
 
 {L}({L}|{D})*		{ count(); yylval.identifier=strdup(yytext); return(IDENTIFIER); }
 
-0[xX]{H}+{IS}?		{ count(); yylval.int_constant = atoll(yytext); return(INT_CONSTANT); }
-0[0-7]*{IS}?		{ count(); yylval.int_constant = atoll(yytext); return(INT_CONSTANT); }
-[1-9]{D}*{IS}?		{ count(); yylval.int_constant = atoll(yytext); return(INT_CONSTANT); }
+0[xX]{H}+{IS}?		{ count(); yylval.int_constant = strtoll(yytext+2, NULL, 16); return(INT_CONSTANT); }
+0[oO][0-7]+{IS}?	{ count(); yylval.int_constant = strtoll(yytext+2, NULL, 8);  return(INT_CONSTANT); }
+0[bB][01]+{IS}?		{ count(); yylval.int_constant = strtoll(yytext+2, NULL, 2);  return(INT_CONSTANT); }
+{D}+{IS}?		{ count(); yylval.int_constant = strtoll(yytext, NULL, 10); return(INT_CONSTANT); }
 
 
 '(\\.|[^\\'\n])+'	{
