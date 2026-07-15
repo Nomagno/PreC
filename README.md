@@ -22,7 +22,7 @@ Its major features include:
 - Removed: `--`, `++`
 - Removed suffixes on constants `999L` `999U` `999F`. Use `999.0` for floats. `0x1000p3` and `1.0e4` float notation is still available.
 
-See `examples/informal_spec.rs` and the rest of examples for more details.
+See `examples/informal_spec.prec` and the rest of examples for more details.
 
 PreC currently has a four-stage translation process:
 1. The PreC source is preprocessed with the C preprocessor.
