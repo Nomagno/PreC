@@ -30,8 +30,8 @@
 // - trailing commas allowed everywhere reasonable
 
 // - operators are now overloading-free:
-//      | -> OR
-//      ^ -> XOR
+//      | -> BOR
+//      ^ -> BXOR
 //      + (unary) -> [ELIMINATED]
 //      ~ (bitwise) -> BNOT
 //      - (unary) -> ~
