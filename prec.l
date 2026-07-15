@@ -3,8 +3,6 @@ L			[a-zA-Z_]
 H			[a-fA-F0-9]
 E			([Ee][+-]?{D}+)
 P                       ([Pp][+-]?{D}+)
-FS			(f|F|l|L)
-IS                      ((u|U)|(u|U)?(l|L|ll|LL)|(l|L|ll|LL)(u|U))
 
 %option yylineno
 
@@ -67,10 +65,10 @@ void comment(void);
 
 {L}({L}|{D})*		{ count(); yylval.identifier=strdup(yytext); return(IDENTIFIER); }
 
-0[xX]{H}+{IS}?		{ count(); yylval.int_constant = strtoll(yytext+2, NULL, 16); return(INT_CONSTANT); }
-0[oO][0-7]+{IS}?	{ count(); yylval.int_constant = strtoll(yytext+2, NULL, 8);  return(INT_CONSTANT); }
-0[bB][01]+{IS}?		{ count(); yylval.int_constant = strtoll(yytext+2, NULL, 2);  return(INT_CONSTANT); }
-{D}+{IS}?		{ count(); yylval.int_constant = strtoll(yytext, NULL, 10); return(INT_CONSTANT); }
+0[xX]{H}+		{ count(); yylval.int_constant = strtoll(yytext+2, NULL, 16); return(INT_CONSTANT); }
+0[oO][0-7]+	    { count(); yylval.int_constant = strtoll(yytext+2, NULL, 8);  return(INT_CONSTANT); }
+0[bB][01]+		{ count(); yylval.int_constant = strtoll(yytext+2, NULL, 2);  return(INT_CONSTANT); }
+{D}+		    { count(); yylval.int_constant = strtoll(yytext, NULL, 10); return(INT_CONSTANT); }
 
 
 '(\\.|[^\\'\n])+'	{
@@ -78,74 +76,68 @@ void comment(void);
     /*L'(\\.|[^\\'\n])+' { ... }*/
                      count(); yylval.int_constant = *(yytext+1); return(INT_CONSTANT); }
 
-{D}+{E}{FS}?		{ count(); yylval.float_constant = atof(yytext); return(FLOAT_CONSTANT); }
-{D}*"."{D}+{E}?{FS}?	{ count(); yylval.float_constant = atof(yytext); return(FLOAT_CONSTANT); }
-{D}+"."{D}*{E}?{FS}?	{ count(); yylval.float_constant = atof(yytext); return(FLOAT_CONSTANT); }
-0[xX]{H}+{P}{FS}?	{ count(); yylval.float_constant = atof(yytext); return(FLOAT_CONSTANT); }
-0[xX]{H}*"."{H}+{P}{FS}?     { count(); yylval.float_constant = atof(yytext); return(FLOAT_CONSTANT); }
-0[xX]{H}+"."{H}*{P}{FS}?     { count(); yylval.float_constant = atof(yytext); return(FLOAT_CONSTANT); }
+{D}*"."{D}+{E}?	    { count(); yylval.float_constant = atof(yytext); return(FLOAT_CONSTANT); }
+{D}+"."{D}*{E}?	    { count(); yylval.float_constant = atof(yytext); return(FLOAT_CONSTANT); }
+0[xX]{H}+{P}	    { count(); yylval.float_constant = atof(yytext); return(FLOAT_CONSTANT); }
+0[xX]{H}*"."{H}+{P} { count(); yylval.float_constant = atof(yytext); return(FLOAT_CONSTANT); }
+0[xX]{H}+"."{H}*{P} { count(); yylval.float_constant = atof(yytext); return(FLOAT_CONSTANT); }
 
 
 L?\"(\\.|[^\\"\n])*\"	{ count(); yylval.string_literal=strdup(yytext); return(STRING_LITERAL); }
 
-"..."			{ count(); return(ELLIPSIS); }
-">>"			{ count(); return(RIGHT_OP); }
-"<<"			{ count(); return(LEFT_OP); }
-"->"			{ count(); return(PTR_OP); }
-"&&"			{ count(); return(AND_OP); }
-"||"			{ count(); return(OR_OP); }
-"<="			{ count(); return(LE_OP); }
-">="			{ count(); return(GE_OP); }
-"=="			{ count(); return(EQ_OP); }
-"!="			{ count(); return(NE_OP); }
-";"			{ count(); return(';'); }
-("{")		{ count(); return('{'); }
-("}")		{ count(); return('}'); }
-","			{ count(); return(','); }
-":"			{ count(); return(':'); }
-"="			{ count(); return('='); }
-"("			{ count(); return('('); }
-")"			{ count(); return(')'); }
-("[")		{ count(); return('['); }
-("]")		{ count(); return(']'); }
-"$"			{ count(); return('$'); }
-"."			{ count(); return('.'); }
-"!"			{ count(); return('!'); }
-"~"			{ count(); return('~'); }
-"-"			{ count(); return('-'); }
-"+"			{ count(); return('+'); }
-"*"			{ count(); return('*'); }
-"@"			{ count(); return('@'); }
-"&"			{ count(); return('&'); }
-"^"			{ count(); return('^'); }
-"/"			{ count(); return('/'); }
-"%"			{ count(); return('%'); }
-"<"			{ count(); return('<'); }
-">"			{ count(); return('>'); }
-"?"			{ count(); return('?'); }
+"..."	{ count(); return(ELLIPSIS); }
+">>"	{ count(); return(RIGHT_OP); }
+"<<"	{ count(); return(LEFT_OP); }
+"->"	{ count(); return(PTR_OP); }
+"&&"	{ count(); return(AND_OP); }
+"||"	{ count(); return(OR_OP); }
+"<="	{ count(); return(LE_OP); }
+">="	{ count(); return(GE_OP); }
+"=="	{ count(); return(EQ_OP); }
+"!="	{ count(); return(NE_OP); }
+";"		{ count(); return(';'); }
+("{")	{ count(); return('{'); }
+("}")	{ count(); return('}'); }
+","		{ count(); return(','); }
+":"		{ count(); return(':'); }
+"="		{ count(); return('='); }
+"("		{ count(); return('('); }
+")"		{ count(); return(')'); }
+("[")	{ count(); return('['); }
+("]")	{ count(); return(']'); }
+"$"		{ count(); return('$'); }
+"."		{ count(); return('.'); }
+"!"		{ count(); return('!'); }
+"~"		{ count(); return('~'); }
+"-"		{ count(); return('-'); }
+"+"		{ count(); return('+'); }
+"*"		{ count(); return('*'); }
+"@"		{ count(); return('@'); }
+"&"		{ count(); return('&'); }
+"^"		{ count(); return('^'); }
+"/"		{ count(); return('/'); }
+"%"		{ count(); return('%'); }
+"<"		{ count(); return('<'); }
+">"		{ count(); return('>'); }
+"?"		{ count(); return('?'); }
 
 [ \t\v\n\f]		{ count(); }
 .			{ /* Add code to complain about unmatched characters */ }
 
 %%
 
-int yywrap(void)
-{
-	return 1;
-}
+int yywrap(void) { return 1; }
 
 
 void comment(void)
-{
-	char c, prev = 0;
-  
-	while ((c = input()) != 0)      /* (EOF maps to 0) */
-	{
-		if (c == '/' && prev == '*')
-			return;
-		prev = c;
-	}
-	yyerror("unterminated comment");
+{ char c, prev = 0;
+    while ((c = input()) != 0)
+    {
+        if (c == '/' && prev == '*')
+            return;
+        prev = c;
+    }
+    yyerror("unterminated comment");
 }
 
 
@@ -153,15 +145,13 @@ int column = 0;
 
 void count(void)
 {
-	int i;
+    int i;
 
-	for (i = 0; yytext[i] != '\0'; i++)
-		if (yytext[i] == '\n')
-			column = 0;
-		else if (yytext[i] == '\t')
-			column += 8 - (column % 8);
-		else
-			column++;
-
-	//ECHO;
+    for (i = 0; yytext[i] != '\0'; i++)
+        if (yytext[i] == '\n')
+            column = 0;
+        else if (yytext[i] == '\t')
+            column += 8 - (column % 8);
+        else
+            column++;
 }

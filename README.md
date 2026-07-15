@@ -20,6 +20,7 @@ Its major features include:
 - Supported types of integer constants: hexadecimal `0xDEADBEEF`, octal `0o34017`, decimal `999` `0999` (leading zeroes not treated as octal), binary `0b10100010`.
 - Removed: `+=`, `-=`, `|=`, etc.
 - Removed: `--`, `++`
+- Removed suffixes on constants `999L` `999U` `999F`. Use `999.0` for floats. `0x1000p3` and `1.0e4` float notation is still available.
 
 See `examples/informal_spec.rs` and the rest of examples for more details.
 
