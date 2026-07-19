@@ -68,7 +68,7 @@
     char *identifier;
     char *string_literal;
     double float_constant;
-    intmax_t int_constant;
+    uintmax_t int_constant;
 }
 
 %type <expression> primary_expression postfix_expression unary_expression cast_expression arithmetic_expression conditional_expression assignment_expression expression

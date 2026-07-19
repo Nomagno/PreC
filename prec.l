@@ -65,10 +65,10 @@ void comment(void);
 
 {L}({L}|{D})*		{ count(); yylval.identifier=strdup(yytext); return(IDENTIFIER); }
 
-0[xX]{H}+		{ count(); yylval.int_constant = strtoll(yytext+2, NULL, 16); return(INT_CONSTANT); }
-0[oO][0-7]+	    { count(); yylval.int_constant = strtoll(yytext+2, NULL, 8);  return(INT_CONSTANT); }
-0[bB][01]+		{ count(); yylval.int_constant = strtoll(yytext+2, NULL, 2);  return(INT_CONSTANT); }
-{D}+		    { count(); yylval.int_constant = strtoll(yytext, NULL, 10); return(INT_CONSTANT); }
+0[xX]{H}+		{ count(); yylval.int_constant = strtoull(yytext+2, NULL, 16); return(INT_CONSTANT); }
+0[oO][0-7]+	    { count(); yylval.int_constant = strtoull(yytext+2, NULL, 8);  return(INT_CONSTANT); }
+0[bB][01]+		{ count(); yylval.int_constant = strtoull(yytext+2, NULL, 2);  return(INT_CONSTANT); }
+{D}+		    { count(); yylval.int_constant = strtoull(yytext, NULL, 10); return(INT_CONSTANT); }
 
 
 '(\\.|[^\\'\n])+'	{
