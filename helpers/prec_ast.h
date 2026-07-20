@@ -111,7 +111,7 @@ struct Expr {
         char *string;
         char *identifier;
         double fp_num;
-        intmax_t int_num;
+        uintmax_t int_num;
     };
 };
 struct ConstExpr;

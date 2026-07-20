@@ -59,6 +59,7 @@ void comment(void);
 "u32"			{ count(); return(U32); }
 "i32"			{ count(); return(I32); }
 "u64"			{ count(); return(U64); }
+"i64"			{ count(); return(I64); }
 "f32"			{ count(); return(F32); }
 "f64"			{ count(); return(F64); }
 "void"			{ count(); return(VOID); }

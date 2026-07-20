@@ -7,6 +7,35 @@
 #include "prec_ast.h"
 #include "prec_transpiler.h"
 
+#include <stdint.h>
+#if INTPTR_MAX == INT64_MAX
+    // 64-bit
+    #define F64_STR "double"
+    #define F32_STR "float"
+    #define U64_STR "long unsigned"
+    #define I64_STR "long signed"
+    #define U32_STR "unsigned"
+    #define I32_STR "signed"
+    #define U16_STR "short unsigned"
+    #define I16_STR "short signed"
+    #define U8_STR "unsigned char"
+    #define I8_STR "signed char"
+#elif INTPTR_MAX == INT32_MAX
+    // 32-bit
+    #define F64_STR "double"
+    #define F32_STR "float"
+    #define U64_STR "long long unsigned"
+    #define I64_STR "long long signed"
+    #define U32_STR "unsigned"
+    #define I32_STR "signed"
+    #define U16_STR "short unsigned"
+    #define I16_STR "short signed"
+    #define U8_STR "unsigned char"
+    #define I8_STR "signed char"
+#else
+    #error Unknown pointer size or weird architecture
+#endif
+
 
 // There is a linked list of output buffers, a new one will be inserted if a function
 // is translated within a function being translated.
@@ -436,16 +465,16 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
     case CType:
         p_t("%s", x->c_type);
         break;
-    case f64: p_t("double"); break;
-    case f32: p_t("float"); break;
-    case u64: p_t("long unsigned"); break;
-    case i64: p_t("long signed"); break;
-    case u32: p_t("unsigned"); break;
-    case i32: p_t("signed"); break;
-    case u16: p_t("short unsigned"); break;
-    case i16: p_t("short signed"); break;
-    case u8: p_t("unsigned char"); break;
-    case i8: p_t("signed char"); break;
+    case f64: p_t(F64_STR); break;
+    case f32: p_t(F32_STR); break;
+    case u64: p_t(U64_STR); break;
+    case i64: p_t(I64_STR); break;
+    case u32: p_t(U32_STR); break;
+    case i32: p_t(I32_STR); break;
+    case u16: p_t(U16_STR); break;
+    case i16: p_t(I16_STR); break;
+    case u8: p_t(U8_STR); break;
+    case i8: p_t(I8_STR); break;
     case Void: {
         // refuse to qualify void types, or rather qualify as special value
         type_buffer->base_type_qualifiers = 1 << 3;
@@ -893,7 +922,7 @@ void t_expr(struct Expr *x) {
         p("%lf", x->fp_num);
         break;
     case Int:
-        p("%ld", x->int_num);
+        p("%lu", x->int_num);
         break;
     case Ternary:
         t_expr(x->ternary.cond);
