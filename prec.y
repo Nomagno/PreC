@@ -124,7 +124,7 @@
 %token AND_OP OR_OP
 
 %token EXTERN STATIC RESTRICT MUT VOLATILE
-%token BOOL U8 I8 U16 I16 U32 I32 U64 I64 F32 F64 VOID
+%token BOOL UPTR IPTR U8 I8 U16 I16 U32 I32 U64 I64 F32 F64 VOID
 %token STRUCT UNION ENUM
 %token ELLIPSIS
 %token C_INCLUDE
@@ -463,6 +463,10 @@ base_type
 	    { $$ = DUP_T(Type, Void); }
 	| BOOL
 	    { $$ = DUP_T(Type, Bool); }
+	| UPTR
+	    { $$ = DUP_T(Type, uptr); }
+	| IPTR 
+	    { $$ = DUP_T(Type, iptr); }
 	| U8
 	    { $$ = DUP_T(Type, u8); }
 	| I8 

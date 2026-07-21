@@ -52,6 +52,8 @@ void comment(void);
 "volatile"		{ count(); return(VOLATILE); }
 "while"			{ count(); return(WHILE); }
 "bool"			{ count(); return(BOOL); }
+"uptr"			{ count(); return(UPTR); }
+"iptr"			{ count(); return(IPTR); }
 "u8"			{ count(); return(U8); }
 "i8"			{ count(); return(I8); }
 "u16"			{ count(); return(U16); }

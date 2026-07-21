@@ -1,41 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <assert.h>
 #include <stdbool.h>
 #include <err.h>
 #include "prec_ast.h"
 #include "prec_transpiler.h"
-
-#include <stdint.h>
-#if INTPTR_MAX == INT64_MAX
-    // 64-bit
-    #define F64_STR "double"
-    #define F32_STR "float"
-    #define U64_STR "long unsigned"
-    #define I64_STR "long signed"
-    #define U32_STR "unsigned"
-    #define I32_STR "signed"
-    #define U16_STR "short unsigned"
-    #define I16_STR "short signed"
-    #define U8_STR "unsigned char"
-    #define I8_STR "signed char"
-#elif INTPTR_MAX == INT32_MAX
-    // 32-bit
-    #define F64_STR "double"
-    #define F32_STR "float"
-    #define U64_STR "long long unsigned"
-    #define I64_STR "long long signed"
-    #define U32_STR "unsigned"
-    #define I32_STR "signed"
-    #define U16_STR "short unsigned"
-    #define I16_STR "short signed"
-    #define U8_STR "unsigned char"
-    #define I8_STR "signed char"
-#else
-    #error Unknown pointer size or weird architecture
-#endif
-
 
 // There is a linked list of output buffers, a new one will be inserted if a function
 // is translated within a function being translated.
@@ -465,16 +436,18 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
     case CType:
         p_t("%s", x->c_type);
         break;
-    case f64: p_t(F64_STR); break;
-    case f32: p_t(F32_STR); break;
-    case u64: p_t(U64_STR); break;
-    case i64: p_t(I64_STR); break;
-    case u32: p_t(U32_STR); break;
-    case i32: p_t(I32_STR); break;
-    case u16: p_t(U16_STR); break;
-    case i16: p_t(I16_STR); break;
-    case u8: p_t(U8_STR); break;
-    case i8: p_t(I8_STR); break;
+    case f64: p_t("double"); break;
+    case f32: p_t("float"); break;
+    case u64: p_t("uint64_t"); break;
+    case i64: p_t("int64_t"); break;
+    case u32: p_t("uint32_t"); break;
+    case i32: p_t("int32_t"); break;
+    case u16: p_t("uint16_t"); break;
+    case i16: p_t("int16_t"); break;
+    case u8: p_t("uint8_t"); break;
+    case i8: p_t("int8_t"); break;
+    case uptr: p_t("uintptr_t"); break;
+    case iptr: p_t("intptr_t"); break;
     case Void: {
         // refuse to qualify void types, or rather qualify as special value
         type_buffer->base_type_qualifiers = 1 << 3;
@@ -1018,6 +991,8 @@ bool is_const_sized_type(struct Type *x) {
     case i16:
     case u8:
     case i8:
+    case uptr:
+    case iptr:
     case Void:
     case Bool:
     case Union:
@@ -1385,6 +1360,7 @@ void t_statement(struct Statement *stat) {
 }
 
 void transpile(struct TopLevel *top) {
+    printf("#include <stdint.h>\n");
     REWIND_LIST(top);
     while (top != NULL) {
         switch (top->tag) {

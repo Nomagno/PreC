@@ -173,6 +173,8 @@ enum TypeSort {
     u16=C('u',16),
     i8=C('i',8),
     u8=C('u',8),
+    iptr=C('i','p'),
+    uptr=C('u','p'),
     Void='v',
     Bool='b',
 };
