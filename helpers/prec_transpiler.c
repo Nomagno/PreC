@@ -136,6 +136,8 @@ bool isBaseType(enum TypeSort x) {
         || x == u16
         || x == i8
         || x == u8
+        || x == uptr
+        || x == iptr
         || x == Bool
         || x == Void
         ;
