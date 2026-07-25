@@ -924,6 +924,66 @@ void t_expr(struct Expr *x) {
         p("->");
         p("%s", x->struct_access_deref.member);
         break;
+    case StructMethod: {
+        t_expr(x->struct_access_deref.e);
+        p(".");
+        p("%s", x->struct_access_deref.member);
+
+        struct ArgumentExpressionList *curr = x->struct_access_deref.method_args;
+        if (curr == NULL) {
+            p("(");
+            p("&"); t_expr(x->struct_access_deref.e);
+            p(")");
+            break;
+        }
+
+        p("(");
+
+        p("&"); t_expr(x->struct_access_deref.e);
+        p(",");
+
+        REWIND_LIST(curr);
+
+        while (curr != NULL) {
+            t_expr(curr->expr);
+            if (curr->next != NULL)
+                p(",");
+            curr = curr->next;
+        }
+
+        p(")");
+        }
+        break;
+    case StructDerefMethod: {
+        t_expr(x->struct_access_deref.e);
+        p("->");
+        p("%s", x->struct_access_deref.member);
+
+        struct ArgumentExpressionList *curr = x->struct_access_deref.method_args;
+        if (curr == NULL) {
+            p("(");
+            t_expr(x->struct_access_deref.e);
+            p(")");
+            break;
+        }
+
+        p("(");
+
+        t_expr(x->struct_access_deref.e);
+        p(",");
+
+        REWIND_LIST(curr);
+
+        while (curr != NULL) {
+            t_expr(curr->expr);
+            if (curr->next != NULL)
+                p(",");
+            curr = curr->next;
+        }
+
+        p(")");
+        }
+        break;
     }
 }
 
@@ -960,6 +1020,10 @@ bool is_const_expr(struct Expr *x) {
     case StructAccess:
         return false;
     case StructDeref:
+        return false;
+    case StructMethod:
+        return false;
+    case StructDerefMethod:
         return false;
     }
 }

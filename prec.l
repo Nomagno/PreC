@@ -47,6 +47,7 @@ void comment(void);
 "typeof"		{ count(); return(TYPEOF); }
 "static"		{ count(); return(STATIC); }
 "struct"		{ count(); return(STRUCT); }
+"constdata"		{ count(); return(CONSTDATA); }
 "switch"		{ count(); return(SWITCH); }
 "union"			{ count(); return(UNION); }
 "volatile"		{ count(); return(VOLATILE); }
@@ -91,6 +92,7 @@ L?\"(\\.|[^\\"\n])*\"	{ count(); yylval.string_literal=strdup(yytext); return(ST
 "..."	{ count(); return(ELLIPSIS); }
 ">>"	{ count(); return(RIGHT_OP); }
 "<<"	{ count(); return(LEFT_OP); }
+"->."	{ count(); return(PTR_METHOD_OP); }
 "->"	{ count(); return(PTR_OP); }
 "&&"	{ count(); return(AND_OP); }
 "||"	{ count(); return(OR_OP); }
@@ -109,6 +111,7 @@ L?\"(\\.|[^\\"\n])*\"	{ count(); yylval.string_literal=strdup(yytext); return(ST
 ("[")	{ count(); return('['); }
 ("]")	{ count(); return(']'); }
 "$"		{ count(); return('$'); }
+".."	{ count(); return(METHOD_OP); }
 "."		{ count(); return('.'); }
 "!"		{ count(); return('!'); }
 "~"		{ count(); return('~'); }

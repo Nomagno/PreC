@@ -29,6 +29,19 @@
 // - Types go all before the variable name: int& [5] a;
 // - trailing commas allowed everywhere reasonable
 
+// - New operators: method call
+//    val..met(args) is equivalent to val.met(&val, args)
+//    val->.met(args) is equivalent to val->met(val, args)
+//    Suffice to say, if val is a non-reentrant expression you asked for trouble, don't blame me xD
+
+// - Structure constdata, example:
+//     struct A { i32 x; } constdata { i32 my_constant = 99; };
+//     struct A myA = { .x = 5 };
+//     myA.x; //evaluates to 5
+//     myA.my_constant; //evaluates to 99
+// constdata variables are actually file-scope global constants that are accessed like a member of the struct.
+// in conjunction with method call operators, you can achieve comfy statically dispatched methods
+
 // - operators are now overloading-free:
 //      | -> BOR
 //      ^ -> BXOR
@@ -41,7 +54,8 @@
 // - +=, *=, etc, all gone
 // - Gone: pre/post increment/decrement --, ++
 // - keywords gone for obvious reasons: auto, register, _Imaginary, _Complex
-//
+
+
 
 // Parameter names used for initialiation, but otherwise discarded from the type as in regular C
 mut i32 (&)(i32 a, i32 b) add = ${ return a+b; };

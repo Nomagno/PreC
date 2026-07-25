@@ -61,6 +61,8 @@ enum ExprType {
     CompoundLiteral='l',
     StructDeref=C('-', '>'),
     StructAccess='.',
+    StructDerefMethod=C('M', 'D'),
+    StructMethod='M',
 };
 
 struct Type;
@@ -72,6 +74,7 @@ struct Expr {
         struct {
             struct Expr *e;
             char *member;
+            struct ArgumentExpressionList *method_args;
         } struct_access_deref;
 
         struct {
@@ -214,6 +217,7 @@ struct Type {
         struct {
             char *name;
             struct ConstDeclarationList *declarations;
+            struct ConstDeclarationList *const_data;
         } struct_or_union_def;
 
         struct {
@@ -258,6 +262,7 @@ struct ConstExpr {
 
 struct ConstVarDecl {
     char *name;
+    struct Initializer *val;
 };
 
 struct ConstVarList {
