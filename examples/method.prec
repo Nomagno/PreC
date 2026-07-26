@@ -1,0 +1,20 @@
+struct MyDataType {
+  i32 x;
+} constdata {
+  // everything in this section is basically 'constexpr members', meaning they are optimized out into constants in the compiler type table, or mangled global variables depending on what the compiler feels like doing, but the main point is
+  // they do not affect the space taken up by the data type
+  i32 y = 5;
+  void (&)(struct MyDataType mut & self, i32 arg) add = ${ self->x = self->x + arg; };
+};
+
+
+c_include "stdio.h"
+i32 (&)(void) main = ${
+    mut struct MyDataType data = { 9 };
+    struct MyDataType mut & datptr = &data;
+
+    printf("%d\n", datptr->x); // 9
+    printf("%d\n", datptr->y); // 5
+    datptr->.add(7); // method access
+    printf("%d\n", datptr->x); // 16
+};

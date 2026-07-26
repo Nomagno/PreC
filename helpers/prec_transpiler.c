@@ -50,6 +50,11 @@ int global_indent_level = 0;
 SymPtr sym_table;
 TypeTablePtr type_table;
 
+// We expose the top level list of c_include directives and declarations
+// because the cleanest way to allow constdata functions to access their own type
+// is through inserting into it. Otherwise, it wouldn't be needed
+struct TopLevel *top_level_list;
+
 struct BufferList {
     size_t size;
     char *buf;
@@ -980,6 +985,7 @@ struct Type *t_expr(struct Expr *x) {
         return_type = x->compound_literal.type;
         break;
     case StructAccess:
+    case StructDeref:
         // Complete constdata detection using the type table.
         // dry run makes sure that nothing will actually be printed
         // TODO: this is a hack, the proper way is to pass dry run along the whole t_expr call tree
@@ -988,6 +994,13 @@ struct Type *t_expr(struct Expr *x) {
         dry_run = true;
         t = t_expr(x->struct_access_deref.e);
         DISCARD_QUALIFIERS(t);
+
+        if (x->tag == StructDeref) {
+            if (t && t->tag == Reference)
+                t = t->reference;
+            DISCARD_QUALIFIERS(t);
+        }
+
 
         // if false, we need to perform a real run later
         bool is_constdata_access = false;
@@ -1021,77 +1034,99 @@ struct Type *t_expr(struct Expr *x) {
             t = t_expr(x->struct_access_deref.e);
         }
 
-        p(".");
+        if (x->tag == StructDeref && !is_constdata_access) {
+            p("->");
+        } else {
+            p(".");
+        }
 
         // TODO: complete type inference (pass down the type of the access as return_type)
         //       using the type table too
         p("%s", x->struct_access_deref.member);
         break;
-    case StructDeref:
-        t_expr(x->struct_access_deref.e);
-        p("->");
-        p("%s", x->struct_access_deref.member);
-        break;
+    case StructDerefMethod:
     case StructMethod: {
-        t_expr(x->struct_access_deref.e);
-        p(".");
+        bool saved_dr = dry_run;
+        dry_run = true;
+        t = t_expr(x->struct_access_deref.e);
+        DISCARD_QUALIFIERS(t);
+
+        if (x->tag == StructDerefMethod) {
+            if (t && t->tag == Reference)
+                t = t->reference;
+            DISCARD_QUALIFIERS(t);
+        }
+
+
+        // if false, we need to perform a real run later
+        bool is_constdata_access = false;
+
+        if (t && t->tag == Struct) {
+            if (t->struct_or_union_def.name != NULL) {
+                TypeTablePtr entry = fetch_type(type_table, t->struct_or_union_def.name);
+                if (entry != NULL) {
+                    struct ConstDeclarationList *decls = entry->constdata;
+                    if (decls != NULL)
+                        REWIND_LIST(decls);
+                    while (!is_constdata_access && decls != NULL) {
+                        struct ConstVarList *vars = decls->decl->vars;
+                        REWIND_LIST(vars);
+                        while (!is_constdata_access && vars != NULL) {
+                            if (strcmp(vars->decl->name, x->struct_access_deref.member) == 0) {
+                                is_constdata_access = true;
+                                dry_run = saved_dr;
+                                p("_prec_internal_constdata_struct_%s",
+                                    t->struct_or_union_def.name);
+                            }
+                            vars = vars->next;
+                        }
+                        decls = decls->next;
+                    }
+                }
+            }
+        }
+        dry_run = saved_dr;
+        if (!is_constdata_access) {
+            t = t_expr(x->struct_access_deref.e);
+        }
+
+        if (x->tag == StructMethod && !is_constdata_access) {
+            p("->");
+        } else {
+            p(".");
+        }
+
+        // TODO: complete type inference (pass down the type of the access as return_type)
+        //       using the type table too
         p("%s", x->struct_access_deref.member);
 
         struct ArgumentExpressionList *curr = x->struct_access_deref.method_args;
         if (curr == NULL) {
             p("(");
-            p("&"); t_expr(x->struct_access_deref.e);
-            p(")");
-            break;
-        }
-
-        p("(");
-
-        p("&"); t_expr(x->struct_access_deref.e);
-        p(",");
-
-        REWIND_LIST(curr);
-
-        while (curr != NULL) {
-            t_expr(curr->expr);
-            if (curr->next != NULL)
-                p(",");
-            curr = curr->next;
-        }
-
-        p(")");
-        }
-        break;
-    case StructDerefMethod: {
-        t_expr(x->struct_access_deref.e);
-        p("->");
-        p("%s", x->struct_access_deref.member);
-
-        struct ArgumentExpressionList *curr = x->struct_access_deref.method_args;
-        if (curr == NULL) {
-            p("(");
+            if (x->tag == StructDerefMethod)
+                p("&");
             t_expr(x->struct_access_deref.e);
             p(")");
-            break;
-        }
+        } else {
+            p("(");
+            if (x->tag == StructMethod)
+                p("&");
+            t_expr(x->struct_access_deref.e);
+            p(",");
 
-        p("(");
+            REWIND_LIST(curr);
 
-        t_expr(x->struct_access_deref.e);
-        p(",");
+            while (curr != NULL) {
+                t_expr(curr->expr);
+                if (curr->next != NULL)
+                    p(",");
+                curr = curr->next;
+            }
 
-        REWIND_LIST(curr);
-
-        while (curr != NULL) {
-            t_expr(curr->expr);
-            if (curr->next != NULL)
-                p(",");
-            curr = curr->next;
-        }
-
-        p(")");
+            p(")");
         }
         break;
+        }
     }
     return return_type;
 }
@@ -1252,7 +1287,7 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
                 });
 
                 // build the initializer
-                struct InitializerList *init_list;
+                struct InitializerList *init_list = NULL;
                 while (node_constdata != NULL) {
                     struct Type *constdata_curr_decl_type = node_constdata->decl->type;
                     struct ConstVarList *vars_node = node_constdata->decl->vars;
@@ -1263,14 +1298,20 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
                                     .desig = DUP_T(Designator, Access,
                                     .access = vars_node->decl->name)
                                 }),
-                            .current = vars_node->decl->val
+                            .current = vars_node->decl->val,
+                            .prev = init_list
                             });
-                        // TODO: to translate code like this,
+                        if (init_list->prev != NULL) {
+                            init_list->prev->next = init_list;
+                        }
+                        // to translate code like this,
                         // the code must be able to access the type we're
                         // dealing with in the first place,
                         // else the ergonomics make no sense.
                         // so the symbol for this must be inserted AFTER the type.
                         // this must only be done in the case of top-level types.
+                        // to achieve this, we will translate the declaration AFTER the current declaration,
+                        // by inserting it for top_level.
                         if (init_list->current->tag == Code) {
                             if (top_level) {
                                 init_list->current = DUP_T(Initializer, Expr,
@@ -1288,12 +1329,10 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
                 decl->vars->decl->val = DUP_T(Initializer, Data,
                     .data = init_list);
 
-                // TODO: some buffer_list manipulation as per the above TODO
-                //       that mentions translation of code having to be able to use the type itself.
-                //       maybe instead of translating right now, insert it for top_level to do next.
-                //       that would work sweet, in fact
                 p("\n");
-                t_declaration(decl, false, false);
+                struct TopLevel *saved_next = top_level_list->next;
+                top_level_list->next = DUP_T(TopLevel, Decl, .decl = decl, .prev = top_level_list);
+                top_level_list->next->next = saved_next;
             } else if (decl->vars != NULL && node_constdata != NULL) {
                 // TODO: error out PROPERLY with a 'compiler limitation'
                 // error as per the above comment
@@ -1653,11 +1692,12 @@ void transpile(struct TopLevel *top) {
     printf("#include <stdint.h>\n");
     sym_table = new_symbol_table();
     type_table = new_type_table();
-    REWIND_LIST(top);
-    while (top != NULL) {
-        switch (top->tag) {
+    top_level_list = top;
+    REWIND_LIST(top_level_list);
+    while (top_level_list != NULL) {
+        switch (top_level_list->tag) {
         case CInclude:
-            printf("\n#include %s\n", top->c_include);
+            printf("\n#include %s\n", top_level_list->c_include);
             break;
         case Decl:
             buffer_list = NULL;
@@ -1666,7 +1706,7 @@ void transpile(struct TopLevel *top) {
 
             buffer_list = create_buffer();
             current_buffer = buffer_list;
-            t_declaration(top->decl, false, true /*top_level*/);
+            t_declaration(top_level_list->decl, false, true /*top_level*/);
             print_buffer_list(buffer_list);
             destroy_buffer_list(buffer_list);
 
@@ -1675,6 +1715,6 @@ void transpile(struct TopLevel *top) {
             global_indent_level = 0;
             break;
         }
-        top = top->next;
+        top_level_list = top_level_list->next;
     }
 }
