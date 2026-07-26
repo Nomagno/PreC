@@ -7,6 +7,8 @@
 #include <err.h>
 #include "prec_ast.h"
 #include "prec_transpiler.h"
+#include "prec_symbol_table.h"
+#include "prec_type_table.h"
 
 // There is a linked list of output buffers, a new one will be inserted if a function
 // is translated within a function being translated.
@@ -45,6 +47,9 @@ fclose(f);
 unsigned global_identifier_counter = 0;
 int global_indent_level = 0;
 
+SymPtr sym_table;
+TypeTablePtr type_table;
+
 struct BufferList {
     size_t size;
     char *buf;
@@ -57,6 +62,8 @@ struct BufferList *buffer_list;
 struct BufferList *current_buffer;
 
 #define REWIND_LIST(_name) do { while (_name->prev != NULL) { _name = _name->prev; } } while(0)
+
+#define DISCARD_QUALIFIERS(_type) do { if (_type && _type->tag == Qualifier) _type = _type->qualifier.t; } while(0)
 
 struct BufferList *create_buffer(void) {
     struct BufferList *retval = calloc(sizeof(struct BufferList), 1);
@@ -88,11 +95,15 @@ void destroy_buffer_list(struct BufferList *list) {
     }
 }
 
+bool dry_run = false;
+
 #define p(...) {\
-    int s = fprintf(current_buffer->stream, __VA_ARGS__);\
-    fflush(current_buffer->stream);\
-    if (s == -1)\
-        err(EXIT_FAILURE, "fprintf");\
+    if (!dry_run) { \
+        int s = fprintf(current_buffer->stream, __VA_ARGS__);\
+        fflush(current_buffer->stream);\
+        if (s == -1)\
+            err(EXIT_FAILURE, "fprintf");\
+    }\
 }
 
 #define INDENT_STR "  "
@@ -116,7 +127,11 @@ void tabs_custom(FILE *stream) {
 
 // main resource used: http://unixwiz.net/techtips/reading-cdecl.html
 
-void t_expr(struct Expr *x);
+// Returns type the expression reduces to if. If it's not inferrable (unknown symbols), returns NULL
+// this is used ONLY for constdata, the rest of the type inference is done by the C compiler.
+// Constdata is a PreC typesystem level feature, so we WILL be able to infer a specific struct/union/enum
+// type if and only if we have the type in the type table
+struct Type *t_expr(struct Expr *x);
 
 // a return value of 2 instead of 1 indicates that it's a void type, and must hence NOT be qualified
 bool isBaseType(enum TypeSort x) {
@@ -721,9 +736,7 @@ void t_initializer(struct Initializer *x, struct Type *t) {
             exit(1);
         }
 
-        if (t->tag == Qualifier) {
-            t = t->qualifier.t;
-        }
+        DISCARD_QUALIFIERS(t);
         if (t->tag != FunPointer) {
             fprintf(stderr, "Compiler error: Explicit type of function initializer must be a function pointer %c\n", t->tag);
             exit(1);
@@ -760,7 +773,9 @@ void t_initializer(struct Initializer *x, struct Type *t) {
     }
 }
 
-void t_expr(struct Expr *x) {
+struct Type *t_expr(struct Expr *x) {
+    struct Type *t;
+    struct Type *return_type = NULL;
     switch (x->tag) {
     case SizeofType:
         p("sizeof(");
@@ -776,10 +791,19 @@ void t_expr(struct Expr *x) {
             p(")");
             break;
         case Ref:
-            p("&");      t_expr(x->unOp.e);
+            p("&");
+            t = t_expr(x->unOp.e);
+            return_type = DUP_T(Type, Reference, .reference = t);
             break;
         case Deref:
-            p("*");      t_expr(x->unOp.e);
+            p("*");
+            t = t_expr(x->unOp.e);
+            DISCARD_QUALIFIERS(t);
+            if (t && t->tag == FunPointer) {
+                return_type = t;
+            } else if (t && t->tag == Reference) {
+                return_type = t->reference;
+            }
             break;
         case Neg:
             p("-");      t_expr(x->unOp.e);
@@ -806,10 +830,35 @@ void t_expr(struct Expr *x) {
             t_expr(x->binOp.e1); p("%c", '%'); t_expr(x->binOp.e2);
             break;
         case Add:
-            t_expr(x->binOp.e1); p("+"); t_expr(x->binOp.e2);
+            struct Type *t1 = t_expr(x->binOp.e1);
+            p("+");
+            struct Type *t2 = t_expr(x->binOp.e2);
+
+            // really approximate pointer arithmetic inference
+            DISCARD_QUALIFIERS(t1);
+            DISCARD_QUALIFIERS(t2);
+            bool t1_ptr = t1 && (t1->tag == Reference || t1->tag == FunPointer);
+            bool t2_ptr = t2 && (t2->tag == Reference || t2->tag == FunPointer);
+            if (t1_ptr && !t2_ptr)
+                return_type = t1;
+            else if (t2_ptr && !t1_ptr)
+                return_type = t2;
+
             break;
         case Sub:
-            t_expr(x->binOp.e1); p("-"); t_expr(x->binOp.e2);
+            t1 = t_expr(x->binOp.e1);
+            p("-");
+            t2 = t_expr(x->binOp.e2);
+
+            // really approximate pointer arithmetic inference
+            DISCARD_QUALIFIERS(t1);
+            DISCARD_QUALIFIERS(t2);
+            t1_ptr = t1 && (t1->tag == Reference || t1->tag == FunPointer);
+            t2_ptr = t2 && (t2->tag == Reference || t2->tag == FunPointer);
+            if (t1_ptr && !t2_ptr)
+                return_type = t1;
+            else if (t2_ptr && !t1_ptr)
+                return_type = t2;
             break;
         case And:
             t_expr(x->binOp.e1); p("&"); t_expr(x->binOp.e2);
@@ -851,13 +900,21 @@ void t_expr(struct Expr *x) {
             t_expr(x->binOp.e1); p("!="); t_expr(x->binOp.e2);
             break;
         case Assign:
-            t_expr(x->binOp.e1); p("="); t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1);
+            p("=");
+            return_type = t_expr(x->binOp.e2);
             break;
         case Sequence:
-            t_expr(x->binOp.e1); p(","); t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1);
+            p(",");
+            return_type = t_expr(x->binOp.e2);
             break;
         case Index:
-            t_expr(x->binOp.e1);
+            t = t_expr(x->binOp.e1);
+            DISCARD_QUALIFIERS(t);
+            if (t && t->tag == Array) {
+                return_type = t->array.t;
+            }
             p("[");
                 t_expr(x->binOp.e2);
             p("]");
@@ -866,7 +923,12 @@ void t_expr(struct Expr *x) {
         p(")");
         break;
     case FunctionCall:
-        t_expr(x->function_call.callee);
+        t = t_expr(x->function_call.callee);
+        DISCARD_QUALIFIERS(t);
+        if (t && t->tag == FunPointer) {
+            return_type = t->fun_pointer.return_type;
+        }
+
         struct ArgumentExpressionList *curr = x->function_call.args;
         if (curr == NULL) {
             p("()");
@@ -892,6 +954,7 @@ void t_expr(struct Expr *x) {
         break;
     case Identifier:
         p("%s", x->identifier);
+        return_type = fetch_symbol_type(sym_table, x->identifier);
         break;
     case Float:
         p("%lf", x->fp_num);
@@ -909,14 +972,59 @@ void t_expr(struct Expr *x) {
     case Cast:
         p("("); p("%s", t_str_type(x->cast.type, NULL, false)); p(")");
         t_expr(x->cast.e);
+        return_type = x->cast.type;
         break;
     case CompoundLiteral:
         p("("); p("%s", t_str_type(x->compound_literal.type, NULL, false)); p(")");
         t_initializer(x->compound_literal.init, x->compound_literal.type);
+        return_type = x->compound_literal.type;
         break;
     case StructAccess:
-        t_expr(x->struct_access_deref.e);
+        // Complete constdata detection using the type table.
+        // dry run makes sure that nothing will actually be printed
+        // TODO: this is a hack, the proper way is to pass dry run along the whole t_expr call tree
+        // and not as a global variable, but it'll do for all cases of the programmer being non-evil for now
+        bool saved_dr = dry_run;
+        dry_run = true;
+        t = t_expr(x->struct_access_deref.e);
+        DISCARD_QUALIFIERS(t);
+
+        // if false, we need to perform a real run later
+        bool is_constdata_access = false;
+
+        if (t && t->tag == Struct) {
+            if (t->struct_or_union_def.name != NULL) {
+                TypeTablePtr entry = fetch_type(type_table, t->struct_or_union_def.name);
+                if (entry != NULL) {
+                    struct ConstDeclarationList *decls = entry->constdata;
+                    if (decls != NULL)
+                        REWIND_LIST(decls);
+                    while (!is_constdata_access && decls != NULL) {
+                        struct ConstVarList *vars = decls->decl->vars;
+                        REWIND_LIST(vars);
+                        while (!is_constdata_access && vars != NULL) {
+                            if (strcmp(vars->decl->name, x->struct_access_deref.member) == 0) {
+                                is_constdata_access = true;
+                                dry_run = saved_dr;
+                                p("_prec_internal_constdata_struct_%s",
+                                    t->struct_or_union_def.name);
+                            }
+                            vars = vars->next;
+                        }
+                        decls = decls->next;
+                    }
+                }
+            }
+        }
+        dry_run = saved_dr;
+        if (!is_constdata_access) {
+            t = t_expr(x->struct_access_deref.e);
+        }
+
         p(".");
+
+        // TODO: complete type inference (pass down the type of the access as return_type)
+        //       using the type table too
         p("%s", x->struct_access_deref.member);
         break;
     case StructDeref:
@@ -985,6 +1093,7 @@ void t_expr(struct Expr *x) {
         }
         break;
     }
+    return return_type;
 }
 
 bool is_const_expr(struct Expr *x) {
@@ -1089,6 +1198,111 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
 
     if (decl->vars == NULL) {
         p("%s%s;", storage_class, t_str_type(decl->type, NULL, false));
+    }
+
+    struct Type *t = decl->type;
+    DISCARD_QUALIFIERS(t);
+    if (t->tag == Struct) {
+        struct ConstDeclarationList *node_regulardata = t->struct_or_union_def.const_data;
+        if (node_regulardata)
+            REWIND_LIST(node_regulardata);
+        struct ConstDeclarationList *node_constdata = t->struct_or_union_def.const_data;
+        if (node_constdata)
+            REWIND_LIST(node_constdata);
+        if (t->struct_or_union_def.name && node_regulardata) {
+            // TODO: make sure we cull types every time we exit a scope,
+            // for now we just insert, this won't fail to compile any
+            // valid programs at least
+            insert_type(type_table, t->struct_or_union_def.name,
+                        node_regulardata, node_constdata,
+                        global_indent_level);
+            // Currently, constdata not supported for structs
+            // declared along with variables in the same decl,
+            // mostly because it's annoying to implement
+            if (decl->vars == NULL && node_constdata != NULL) {
+                // Create a _prec_internal_constdata_struct_##structname
+                //    const global variable declaration object
+                //    as an anonymous struct,
+                //    that contains the constdata fields, then
+                //    set it to be initialized to the proper data.
+                // Add the helper annotations for function-valued literals.
+
+                // build the top-level declaration
+                struct Declaration *decl =
+                    DUP((struct Declaration){
+                        .class = Static,
+                        .type = DUP_T(
+                                Type,
+                                Struct,
+                                .struct_or_union_def = {
+                                    .name = NULL,
+                                    .const_data = NULL,
+                                    .declarations = node_constdata
+                                })
+                    });
+                char *full_name;
+
+                // add one var
+                asprintf(&full_name, "_prec_internal_constdata_struct_%s",
+                    t->struct_or_union_def.name);
+                decl->vars = DUP((struct VarList){
+                    .decl = DUP((struct VarDecl) { .name = full_name, .val = NULL }),
+                    .prev = NULL,
+                    .next = NULL
+                });
+
+                // build the initializer
+                struct InitializerList *init_list;
+                while (node_constdata != NULL) {
+                    struct Type *constdata_curr_decl_type = node_constdata->decl->type;
+                    struct ConstVarList *vars_node = node_constdata->decl->vars;
+                    REWIND_LIST(vars_node);
+                    while (vars_node != NULL) {
+                        init_list = DUP((struct InitializerList) {
+                            .designation = DUP((struct DesignatorList) {
+                                    .desig = DUP_T(Designator, Access,
+                                    .access = vars_node->decl->name)
+                                }),
+                            .current = vars_node->decl->val
+                            });
+                        // TODO: to translate code like this,
+                        // the code must be able to access the type we're
+                        // dealing with in the first place,
+                        // else the ergonomics make no sense.
+                        // so the symbol for this must be inserted AFTER the type.
+                        // this must only be done in the case of top-level types.
+                        if (init_list->current->tag == Code) {
+                            if (top_level) {
+                                init_list->current = DUP_T(Initializer, Expr,
+                                    .expr = DUP_T(Expr, CompoundLiteral,
+                                        .compound_literal.type = constdata_curr_decl_type,
+                                        .compound_literal.init = init_list->current));
+                            }
+                        }
+                        vars_node = vars_node->next;
+                    }
+                    
+                    node_constdata = node_constdata->next;
+                }
+
+                decl->vars->decl->val = DUP_T(Initializer, Data,
+                    .data = init_list);
+
+                // TODO: some buffer_list manipulation as per the above TODO
+                //       that mentions translation of code having to be able to use the type itself.
+                //       maybe instead of translating right now, insert it for top_level to do next.
+                //       that would work sweet, in fact
+                p("\n");
+                t_declaration(decl, false, false);
+            } else if (decl->vars != NULL && node_constdata != NULL) {
+                // TODO: error out PROPERLY with a 'compiler limitation'
+                // error as per the above comment
+                assert(!"Compiler limitation: can't have const");
+            }
+        }
+    }
+
+    if (decl->vars == NULL) {
         return;
     }
 
@@ -1109,6 +1323,11 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
                 p(" = ");
                 t_initializer(node->decl->val, decl->type);
 
+                // TODO: make sure to cull symbols every time a scope is exited,
+                // for now we just insert, this won't fail to compile any
+                // valid programs at least
+                insert_symbol(sym_table, node->decl->name, decl->type, global_indent_level);
+
                 if (freeform) { p("; "); }
                 else          { p(";\n"); }
             }
@@ -1120,6 +1339,11 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
                 else          { p(";\n"); }
             } else {
                 p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, false));
+
+                // TODO: make sure to cull symbols every time a scope is exited,
+                // for now we just insert, this won't fail to compile any
+                // valid programs at least
+                insert_symbol(sym_table, node->decl->name, decl->type, global_indent_level);
 
                 // in preC, all non-extern variables are zero-initialized by default if no initializer is specified
                 // Check if it's a VLA (if any of the array types contained within are not 100% constant expressions). If it's the case, do not print the initializer
@@ -1427,6 +1651,8 @@ void t_statement(struct Statement *stat) {
 
 void transpile(struct TopLevel *top) {
     printf("#include <stdint.h>\n");
+    sym_table = new_symbol_table();
+    type_table = new_type_table();
     REWIND_LIST(top);
     while (top != NULL) {
         switch (top->tag) {
