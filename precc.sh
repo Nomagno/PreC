@@ -46,10 +46,16 @@ transpile() {
 }
 
 transpile_flag=FALSE
+fsyntax_only_flag=FALSE
 
 if [ "$1" = "-transpile" ]; then
     shift
     transpile_flag=TRUE
+fi
+
+# If -fsyntax-only, delete the output file after GCC has processed it
+if [ "$1" = "-fsyntax-only" ]; then
+    fsyntax_only_flag=TRUE
 fi
 
 cleanup() {
@@ -90,4 +96,19 @@ done
 if [ $transpile_flag = FALSE ]; then
     echo "cc $args"
     eval "cc $args"
+fi
+
+if [ $fsyntax_only_flag = TRUE ]; then
+    for i in $args; do
+        case "$i" in
+          \'*.prec.c\')
+            eval "rm -f -- $i"
+            ;;
+          \'*.preh.h\')
+            eval "rm -f -- $i"
+            ;;
+          *)
+            ;;
+        esac
+    done
 fi
