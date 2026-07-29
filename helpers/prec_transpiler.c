@@ -528,11 +528,21 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
 
                         current_buffer = &(struct BufferList){ .stream = type_buffer->stream };
 
-                        // Struct members are always implicitly mut
+                        // Struct/union members are always implicitly mut.
+                        // This is because the behaviour of const members in C structs is crazy:
+                        //    local variables with a type that contains a struct that has ANY const member
+                        //    can NEVER be reassigned easily.
+                        // So, we just don't allow this behaviour.
                         if (node->decl->type->tag == Qualifier) {
                             node->decl->type->qualifier.qualifiers |= Mut;
                         } else {
-                            node->decl->type = DUP_T(Type, Qualifier, .qualifier = { .qualifiers = Mut, .t = node->decl->type});
+                            node->decl->type = DUP_T(Type, Qualifier,
+                                .qualifier = {
+                                    .qualifiers = Mut,
+                                    .t = node->decl->type
+                                },
+                                .source_line = node->decl->type->source_line
+                            );
                         }
                         tabs_custom(type_buffer->stream);
                         p_t("%s", t_str_type(node->decl->type, var_node->decl->name, false));
@@ -798,7 +808,10 @@ struct Type *t_expr(struct Expr *x) {
         case Ref:
             p("&");
             t = t_expr(x->unOp.e);
-            return_type = DUP_T(Type, Reference, .reference = t);
+            return_type = DUP_T(Type, Reference,
+                .reference = t,
+                .source_line = t->source_line
+            );
             break;
         case Deref:
             p("*");
@@ -1272,8 +1285,11 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
                                 .struct_or_union_def = {
                                     .name = NULL,
                                     .const_data = NULL,
-                                    .declarations = node_constdata
-                                })
+                                    .declarations = node_constdata,
+                                },
+                                .source_line = t->struct_or_union_def.const_data->source_line
+                        ),
+                        .source_line = t->struct_or_union_def.const_data->source_line
                     });
                 char *full_name;
 
@@ -1281,9 +1297,14 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
                 asprintf(&full_name, "_prec_internal_constdata_struct_%s",
                     t->struct_or_union_def.name);
                 decl->vars = DUP((struct VarList){
-                    .decl = DUP((struct VarDecl) { .name = full_name, .val = NULL }),
+                    .decl = DUP((struct VarDecl) {
+                        .name = full_name,
+                        .val = NULL,
+                        .source_line = t->struct_or_union_def.const_data->source_line
+                    }),
                     .prev = NULL,
-                    .next = NULL
+                    .next = NULL,
+                    .source_line = t->struct_or_union_def.const_data->source_line
                 });
 
                 // build the initializer
@@ -1295,11 +1316,16 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
                     while (vars_node != NULL) {
                         init_list = DUP((struct InitializerList) {
                             .designation = DUP((struct DesignatorList) {
-                                    .desig = DUP_T(Designator, Access,
-                                    .access = vars_node->decl->name)
+                                    .desig = DUP_T(
+                                        Designator, Access,
+                                        .access = vars_node->decl->name,
+                                        .source_line = vars_node->decl->source_line
+                                    ),
+                                    .source_line = vars_node->decl->source_line
                                 }),
                             .current = vars_node->decl->val,
-                            .prev = init_list
+                            .prev = init_list,
+                            .source_line = vars_node->decl->val->source_line
                             });
                         if (init_list->prev != NULL) {
                             init_list->prev->next = init_list;
@@ -1310,6 +1336,9 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
                         // else the ergonomics make no sense.
                         // so the symbol for this must be inserted AFTER the type.
                         // this must only be done in the case of top-level types.
+                        // TODO: As of C23, this can be achieved for non-top-level types as well
+                        //       Because of the rules that allow for limited structural typing.
+                        //       Maybe make a branch of the PreC transpiler that targets C23 in the future?
                         // to achieve this, we will translate the declaration AFTER the current declaration,
                         // by inserting it for top_level.
                         if (init_list->current->tag == Code) {
@@ -1317,21 +1346,30 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
                                 init_list->current = DUP_T(Initializer, Expr,
                                     .expr = DUP_T(Expr, CompoundLiteral,
                                         .compound_literal.type = constdata_curr_decl_type,
-                                        .compound_literal.init = init_list->current));
+                                        .compound_literal.init = init_list->current,
+                                        .source_line = init_list->current->source_line
+                                    ),
+                                    .source_line = init_list->source_line
+                                );
                             }
                         }
                         vars_node = vars_node->next;
                     }
-                    
                     node_constdata = node_constdata->next;
                 }
 
                 decl->vars->decl->val = DUP_T(Initializer, Data,
-                    .data = init_list);
+                    .data = init_list,
+                    .source_line = decl->vars->decl->source_line
+                );
 
                 p("\n");
                 struct TopLevel *saved_next = top_level_list->next;
-                top_level_list->next = DUP_T(TopLevel, Decl, .decl = decl, .prev = top_level_list);
+                top_level_list->next = DUP_T(TopLevel, Decl,
+                    .decl = decl,
+                    .prev = top_level_list,
+                    .source_line = decl->source_line
+                );
                 top_level_list->next->next = saved_next;
             } else if (decl->vars != NULL && node_constdata != NULL) {
                 // TODO: error out PROPERLY with a 'compiler limitation'

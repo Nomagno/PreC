@@ -4,10 +4,19 @@
 #include <stdint.h>
 #define C(_c1, _c2) (int16_t)(_c1 << 8 | + _c2)
 
+// For bison, set the source line automatically for each struct
+#ifdef FROM_BISON
+    #define DUP(...) ({typeof(__VA_ARGS__) *tmp;\
+                      tmp = malloc(sizeof(__VA_ARGS__));\
+                      *tmp = __VA_ARGS__;\
+                      tmp->source_line = yylineno;\
+                      tmp; })
+#else
     #define DUP(...) ({typeof(__VA_ARGS__) *tmp;\
                       tmp = malloc(sizeof(__VA_ARGS__));\
                       *tmp = __VA_ARGS__;\
                       tmp; })
+#endif
     #define DUP_T(_type, _tag, ...) DUP((struct _type){.tag = _tag, __VA_ARGS__})
 
     #define BIN_EXPR(_tag, _arg1, _arg2) DUP_T(Expr, Binary, .binOp = { .tag = _tag, .e1 = _arg1, .e2 = _arg2 });
@@ -116,6 +125,7 @@ struct Expr {
         double fp_num;
         uintmax_t int_num;
     };
+    unsigned source_line;
 };
 struct ConstExpr;
 
@@ -123,6 +133,7 @@ struct ArgumentExpressionList {
     struct Expr *expr;
     struct ArgumentExpressionList *prev;
     struct ArgumentExpressionList *next;
+    unsigned source_line;
 };
 
 struct Designator {
@@ -131,12 +142,14 @@ struct Designator {
         char *access;
         struct ConstExpr *index;
     };
+    unsigned source_line;
 };
 
 struct DesignatorList {
     struct Designator *desig;
     struct DesignatorList *prev;
     struct DesignatorList *next;
+    unsigned source_line;
 };
 
 struct InitializerList {
@@ -144,6 +157,7 @@ struct InitializerList {
     struct Initializer *current;
     struct InitializerList *prev;
     struct InitializerList *next;
+    unsigned source_line;
 };
 
 struct Initializer {
@@ -153,6 +167,7 @@ struct Initializer {
         struct InitializerList *data;
         struct Block *code;
     };
+    unsigned source_line;
 };
 
 enum TypeSort {
@@ -232,54 +247,64 @@ struct Type {
             struct TypeParamList *param_list;
         } fun_pointer;
     };
+    unsigned source_line;
 };
 
 struct TypeParam {
     struct Type *type;
     char *name;
+    unsigned source_line;
 };
 struct TypeParamList {
     struct TypeParam *param; // NULL: ellipsis
     struct TypeParamList *prev;
     struct TypeParamList *next;
+    unsigned source_line;
 };
 
 struct EnumeratorList {
     struct EnumValue *val;
     struct EnumeratorList *prev;
     struct EnumeratorList *next;
+    unsigned source_line;
 };
 
 struct EnumValue {
     char *name;
     struct ConstExpr *val;
+    unsigned source_line;
 };
 
 
 struct ConstExpr {
     struct Expr *expr;
+    unsigned source_line;
 };
 
 struct ConstVarDecl {
     char *name;
     struct Initializer *val;
+    unsigned source_line;
 };
 
 struct ConstVarList {
     struct ConstVarDecl *decl;
     struct ConstVarList *prev;
     struct ConstVarList *next;
+    unsigned source_line;
 };
 
 struct ConstDeclaration {
     struct Type *type;
     struct ConstVarList *vars;
+    unsigned source_line;
 };
 
 struct ConstDeclarationList {
     struct ConstDeclaration *decl;
     struct ConstDeclarationList *prev;
     struct ConstDeclarationList *next;
+    unsigned source_line;
 };
 
 
@@ -292,28 +317,33 @@ enum StorageClass {
 struct VarDecl {
     char *name;
     struct Initializer *val;
+    unsigned source_line;
 };
 
 struct VarList {
     struct VarDecl *decl;
     struct VarList *prev;
     struct VarList *next;
+    unsigned source_line;
 };
 
 struct Declaration {
     enum StorageClass class;
     struct Type *type;
     struct VarList *vars;
+    unsigned source_line;
 };
 
 struct Block {
     struct BlockList *contents;
+    unsigned source_line;
 };
 
 struct BlockList {
     struct BlockItem *item;
     struct BlockList *prev;
     struct BlockList *next;
+    unsigned source_line;
 };
 
 struct BlockItem {
@@ -322,6 +352,7 @@ struct BlockItem {
         struct Statement *stat;
         struct Declaration *decl;
     };
+    unsigned source_line;
 };
 
 enum StatementType {
@@ -343,6 +374,7 @@ struct Statement {
         struct IterationStatement *i;
         struct JumpStatement *j;
     };
+    unsigned source_line;
 };
 
 struct SelectionStatement {
@@ -365,6 +397,7 @@ struct SelectionStatement {
             struct Statement *block;
         } switch_stat;
     };
+    unsigned source_line;
 };
 
 struct JumpStatement {
@@ -377,6 +410,7 @@ struct JumpStatement {
             char *label_name;
         } goto_stat;
     };
+    unsigned source_line;
 };
 
 struct LabeledStatement {
@@ -384,6 +418,7 @@ struct LabeledStatement {
     char *label_name; // For the Label case
     struct ConstExpr *case_expr; // For the Case case
     struct Statement *stat; // For all cases
+    unsigned source_line;
 };
 
 struct IterationStatement {
@@ -406,6 +441,7 @@ struct IterationStatement {
             struct Statement *stat;
         } for_stat_expr;
     };
+    unsigned source_line;
 };
 
 // Top level node
@@ -417,6 +453,7 @@ struct TopLevel {
     };
     struct TopLevel *prev;
     struct TopLevel *next;
+    unsigned source_line;
 };
 
 #endif

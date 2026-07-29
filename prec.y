@@ -15,6 +15,7 @@
     #include <stdio.h>
     #include <stdlib.h>
 
+    #define FROM_BISON
     #include "helpers/prec_ast.h"
     #include "helpers/prec_transpiler.h"
 
