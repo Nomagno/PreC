@@ -2,7 +2,7 @@
 
 args=''
 
-# ``make install"" will replace this with the base64 encoding of the prec_internal binary
+# ``make install"" will replace this with "REPLACED"
 transpiler_code='REPLACE ME'
 
 error_handling() {
@@ -25,13 +25,11 @@ transpile() {
     if [ "$transpiler_code" = 'REPLACE ME' ]; then
         transpiler=./prec_internal
     else
-        transpiler=$(mktemp)
-        echo "$transpiler_code" | base64 -d -i > "$transpiler"
-        chmod +x "$transpiler"
+        transpiler=prec_internal
     fi
 
-    if [ ! -e "$transpiler" ]; then
-        echo "$transpiler: not found, revise your PreC source directory (might have to run \`make\`)"
+    if ! command -v "$transpiler" >/dev/null 2>&1; then
+        echo "$transpiler: not found, revise your PreC source directory or PATH (might have to run 'make' or 'make install')"
         exit 1;
     fi
 
