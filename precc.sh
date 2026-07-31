@@ -39,12 +39,27 @@ transpile() {
     mv "$tmp2" "$tmp2"."$ext"
     tmp2=$tmp2.$ext
 
-    (cpp "$1" | grep -v '^# ')         > "$tmp1"   \
+    ($c_preprocessor "$1" | grep -v '^# ')         > "$tmp1"   \
     && ("$transpiler" "$tmp1") 3>&2 2>&1 1>"$output" | sed "s|^$tmp1:|$1:|g" | error_handling "$1"
 }
 
 transpile_flag=FALSE
 fsyntax_only_flag=FALSE
+
+c_compiler=cc
+c_preprocessor=cpp
+
+if [ "$1" = "-prec_custom_cc" ]; then
+    c_compiler=$2
+    shift
+    shift
+fi
+
+if [ "$1" = "-prec_custom_cpp" ]; then
+    c_preprocessor=$2
+    shift
+    shift
+fi
 
 if [ "$1" = "-transpile" ]; then
     shift
@@ -92,8 +107,8 @@ for i in "$@"; do
 done
 
 if [ $transpile_flag = FALSE ]; then
-    echo "cc $args"
-    eval "cc $args"
+    echo "$c_compiler $args"
+    eval "$c_compiler $args"
 fi
 
 if [ $fsyntax_only_flag = TRUE ]; then
