@@ -1727,7 +1727,7 @@ void t_statement(struct Statement *stat) {
 }
 
 void transpile(struct TopLevel *top) {
-    printf("#include <stdint.h>\n");
+    printf("#include \"stdint.h\"\n");
     sym_table = new_symbol_table();
     type_table = new_type_table();
     top_level_list = top;
