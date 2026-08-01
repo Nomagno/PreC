@@ -1116,7 +1116,7 @@ struct Type *t_expr(struct Expr *x) {
         struct ArgumentExpressionList *curr = x->struct_access_deref.method_args;
         if (curr == NULL) {
             p("(");
-            if (x->tag == StructDerefMethod)
+            if (x->tag == StructMethod)
                 p("&");
             t_expr(x->struct_access_deref.e);
             p(")");
