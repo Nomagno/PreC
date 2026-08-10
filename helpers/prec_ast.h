@@ -167,6 +167,10 @@ struct Initializer {
         struct InitializerList *data;
         struct Block *code;
     };
+    // This backchannel is filled in
+    // with the identifier of the anonymous function
+    // when a function-valued literal is translated
+    char *code_backchannel;
     unsigned source_line;
 };
 

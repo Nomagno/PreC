@@ -774,6 +774,8 @@ void t_initializer(struct Initializer *x, struct Type *t) {
         asprintf(&unique_temporary_identifier, "_prec_anon_%d", global_identifier_counter);
         global_identifier_counter += 1;
 
+        x->code_backchannel = unique_temporary_identifier;
+
         p("static ");
 
         char *decl = t_str_type(t, unique_temporary_identifier, true /*dereference function pointer*/);
@@ -810,7 +812,7 @@ struct Type *t_expr(struct Expr *x) {
             t = t_expr(x->unOp.e);
             return_type = DUP_T(Type, Reference,
                 .reference = t,
-                .source_line = t->source_line
+                .source_line = (t != NULL) ? t->source_line : x->source_line
             );
             break;
         case Deref:
@@ -972,7 +974,10 @@ struct Type *t_expr(struct Expr *x) {
         break;
     case Identifier:
         p("%s", x->identifier);
-        return_type = fetch_symbol_type(sym_table, x->identifier);
+        // Don't bother with calculating the return type for prec anon stuff, they are not in the symbol table.
+        if (strcmp(x->identifier, "_prec_anon") != 0) {
+            return_type = fetch_symbol_type(sym_table, x->identifier);
+        }
         break;
     case Float:
         p("%lf", x->fp_num);
@@ -1017,6 +1022,8 @@ struct Type *t_expr(struct Expr *x) {
 
         // if false, we need to perform a real run later
         bool is_constdata_access = false;
+        bool constdata_inlined = false;
+        struct Expr *constdata_inlined_value = NULL;
 
         if (t && t->tag == Struct) {
             if (t->struct_or_union_def.name != NULL) {
@@ -1031,9 +1038,60 @@ struct Type *t_expr(struct Expr *x) {
                         while (!is_constdata_access && vars != NULL) {
                             if (strcmp(vars->decl->name, x->struct_access_deref.member) == 0) {
                                 is_constdata_access = true;
+
+                                struct Type *inline_type = decls->decl->type;
+                                DISCARD_QUALIFIERS(inline_type);
+                                if (inline_type->tag == FunPointer || inline_type->tag == Reference || isBaseType(inline_type->tag)) {
+                                    if (vars->decl->val == NULL) {
+                                        constdata_inlined = true;
+                                        constdata_inlined_value =
+                                            DUP_T(Expr, Cast,
+                                                .cast = {
+                                                    .type = inline_type,
+                                                    .e =
+                                                        DUP_T(Expr, Int,
+                                                            .int_num = 0
+                                                        )
+                                                }, 
+                                                .source_line = x->source_line
+                                            );
+                                    } else if (vars->decl->val->tag == Expr) {
+                                        constdata_inlined = true;
+                                        constdata_inlined_value =
+                                            DUP_T(Expr, Cast,
+                                                .cast = {
+                                                    .type = inline_type,
+                                                    .e = vars->decl->val->expr
+                                                }, 
+                                                .source_line = x->source_line
+                                            );
+                                    } else if (vars->decl->val->tag == Code) {
+                                        constdata_inlined = true;
+                                        constdata_inlined_value =
+                                            DUP_T(Expr, Unary,
+                                                .unOp = {
+                                                    .tag = Ref,
+                                                    .e = DUP_T(Expr, Identifier,
+                                                        .identifier = vars->decl->val->code_backchannel,
+                                                        .source_line = x->source_line
+                                                    )
+                                                },
+                                                .source_line = x->source_line
+                                            );
+                                        // fprintf(stderr, "Nya %s\n", vars->decl->val->code_backchannel);
+                                        // exit(1);
+                                    } else {
+                                        //fprintf(stderr, "Nya %c\n", vars->decl->val->tag);
+                                        //exit(1);
+                                    }
+
+                                }
                                 dry_run = saved_dr;
-                                p("_prec_internal_constdata_struct_%s",
-                                    t->struct_or_union_def.name);
+
+                                if (!constdata_inlined) {
+                                    p("_prec_internal_constdata_struct_%s",
+                                        t->struct_or_union_def.name);
+                                }
                             }
                             vars = vars->next;
                         }
@@ -1043,19 +1101,24 @@ struct Type *t_expr(struct Expr *x) {
             }
         }
         dry_run = saved_dr;
-        if (!is_constdata_access) {
-            t = t_expr(x->struct_access_deref.e);
-        }
 
-        if (x->tag == StructDeref && !is_constdata_access) {
-            p("->");
+        if (constdata_inlined) {
+            t_expr(constdata_inlined_value);
         } else {
-            p(".");
-        }
+            if (!is_constdata_access) {
+                t = t_expr(x->struct_access_deref.e);
+            }
 
-        // TODO: complete type inference (pass down the type of the access as return_type)
-        //       using the type table too
-        p("%s", x->struct_access_deref.member);
+            if (x->tag == StructDeref && !is_constdata_access) {
+                p("->");
+            } else {
+                p(".");
+            }
+
+            // TODO: complete type inference (pass down the type of the access as return_type)
+            //       using the type table too
+            p("%s", x->struct_access_deref.member);
+        }
         break;
     case StructDerefMethod:
     case StructMethod: {
