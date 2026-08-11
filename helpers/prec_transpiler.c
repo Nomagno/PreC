@@ -1822,8 +1822,11 @@ void t_statement(struct Statement *stat) {
             }
             
             t_declaration(stat->i->for_stat_decl.init, true /*freeform: no newlines and no indents*/, false /*top_level*/);
-            t_expr(stat->i->for_stat_decl.clause);
+
+            if (stat->i->for_stat_decl.clause != NULL)
+                t_expr(stat->i->for_stat_decl.clause);
             p("; ");
+
             if (stat->i->for_stat_decl.update != NULL)
                 t_expr(stat->i->for_stat_decl.update);
 
