@@ -7,11 +7,12 @@ extern FILE *yyin;
 extern int yyparse();
 
 FILE *file;
-char *filename;
+char *filename = NULL;
+char *pretty_filename = NULL;
 
 int main(int argc, char *argv[]) {
-    if (argc != 2) {
-        fprintf(stderr, "Correct use: %s file\n",argv[0]);
+    if (argc < 2) {
+        fprintf(stderr, "Correct use: %s file [optional pretty filename]\n",argv[0]);
         exit(1);
     }
 
@@ -23,6 +24,9 @@ int main(int argc, char *argv[]) {
     }
 
     filename = argv[1];
+
+    if (argc >= 3)
+        pretty_filename = argv[2];
 
     yyin = file;
     yyparse();

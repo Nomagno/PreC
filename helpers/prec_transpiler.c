@@ -102,7 +102,32 @@ void destroy_buffer_list(struct BufferList *list) {
 
 bool dry_run = false;
 
+// Indicates the source line, if 0 then there's no source line.
+// Set by every call to p_src.
+// Consumed by every call to p that follows a newline.
+// Calls to p_src that have their source line parameter as -1 do not alter source_line.
+unsigned source_line = 0;
+
+// If a newline was just printed, then source_line must be != 0
+_Bool newline_just_printed = 0;
+
+extern const char *pretty_filename;
+
 #define p(...) {\
+        if (newline_just_printed) { \
+            if (source_line == 0) { \
+                fprintf(stderr, "Warning: no source line for: \""); \
+                fprintf(stderr, __VA_ARGS__); \
+                fprintf(stderr, "\"\n"); \
+                newline_just_printed = 0; \
+            } else { \
+                if (pretty_filename != NULL)\
+                    fprintf(current_buffer->stream, "#line \"%d\"\n", source_line); \
+                source_line = 0; \
+                newline_just_printed = 0; \
+                tabs(); \
+            } \
+        } \
     if (!dry_run) { \
         int s = fprintf(current_buffer->stream, __VA_ARGS__);\
         fflush(current_buffer->stream);\
@@ -111,16 +136,32 @@ bool dry_run = false;
     }\
 }
 
+#define p_src(_source_line, ...) { \
+    if (_source_line >= 0) \
+        source_line = _source_line; \
+    p(__VA_ARGS__); \
+}
+
+#define set_src(_source_line) source_line = _source_line;
+
+#define NEWLINE() { p("\n"); newline_just_printed = true; }
+
 #define INDENT_STR "  "
 void tabs(void) {
-    for (int i = 0; i < global_indent_level; i++)
-        p(INDENT_STR);
+    if (!dry_run) {
+        for (int i = 0; i < global_indent_level; i++) {
+            int s = fprintf(current_buffer->stream, INDENT_STR);
+            fflush(current_buffer->stream);
+            if (s == -1)
+                err(EXIT_FAILURE, "fprintf");
+        }
+    }
 }
 
 void tabs_custom(FILE *stream) {
     for (int i = 0; i < global_indent_level; i++) {
         int s = fprintf(stream, INDENT_STR);
-        fflush(current_buffer->stream);
+        fflush(stream);
         if (s == -1)
             err(EXIT_FAILURE, "fprintf");
     }
@@ -672,8 +713,10 @@ void t_block(struct Block *b) {
         return;
     }
 
+    set_src(b->source_line);
     tabs();
-    p("{\n");
+    p("{");
+    NEWLINE();
 
     global_indent_level += 1;
 
@@ -682,21 +725,28 @@ void t_block(struct Block *b) {
     while (node != NULL) {
         switch(node->item->tag) {
         case Declaration:
+            set_src(node->item->decl->source_line);
             t_declaration(node->item->decl, false, false /*top_level*/);
-            p("\n");
+
+
+            // purely cosmetic newline
+            set_src(node->item->decl->source_line);
+            NEWLINE();
             break;
         case Statement:
-            t_statement(node->item->stat);
-            //p("\n");
-            break;
+            set_src(node->item->stat->source_line);
+             t_statement(node->item->stat);
+            //NEWLINE();
         }
         node = node->next;
     }
 
     global_indent_level -= 1;
 
-    tabs();
-    p("}\n");
+    set_src(b->source_line);
+     tabs();
+    p("}");
+    NEWLINE();
 }
 
 // The type can be NULL
@@ -779,12 +829,16 @@ void t_initializer(struct Initializer *x, struct Type *t) {
         p("static ");
 
         char *decl = t_str_type(t, unique_temporary_identifier, true /*dereference function pointer*/);
+        set_src(x->source_line);
         p("%s", decl);
         // print the code itself
         t_block(x->code);
 
         current_buffer = saved_buffer;
         global_indent_level = saved_indent;
+
+        // This will have been set to true by t_block()
+        newline_just_printed = false;
         p("&%s", unique_temporary_identifier);
         break;
     }
@@ -1294,6 +1348,9 @@ bool is_const_sized_type(struct Type *x) {
 
 /*freeform: no newlines and no indents*/
 void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
+    if (!freeform)
+        set_src(decl->source_line);
+
     char *storage_class;
     switch (decl->class) {
     case None:
@@ -1426,7 +1483,7 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
                     .source_line = decl->vars->decl->source_line
                 );
 
-                p("\n");
+                NEWLINE();
                 struct TopLevel *saved_next = top_level_list->next;
                 top_level_list->next = DUP_T(TopLevel, Decl,
                     .decl = decl,
@@ -1469,14 +1526,14 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
                 insert_symbol(sym_table, node->decl->name, decl->type, global_indent_level);
 
                 if (freeform) { p("; "); }
-                else          { p(";\n"); }
+                else          { p(";"); NEWLINE(); }
             }
         } else {
             if (top_level && decl->type->tag == FunPointer) {
                 p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, true));
 
                 if (freeform) { p("; "); }
-                else          { p(";\n"); }
+                else          { p(";"); NEWLINE(); }
             } else {
                 p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, false));
 
@@ -1492,7 +1549,7 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
                     p(" = {0}");
 
                 if (freeform) { p("; "); }
-                else          { p(";\n"); }
+                else          { p(";"); NEWLINE(); }
             }
         }
         node = node->next;
@@ -1508,7 +1565,7 @@ void t_statement(struct Statement *stat) {
         tabs();
         if (stat->e != NULL)
             t_expr(stat->e);
-        p(";\n");
+        p(";"); NEWLINE();
         break;
     case Selection:
         switch (stat->s->tag) {
@@ -1516,7 +1573,7 @@ void t_statement(struct Statement *stat) {
             if (stat->s->simple_if.decl != NULL) {
                 tabs();
                 p("{");
-                p("\n");
+                NEWLINE();
                 global_indent_level += 1;
                 t_declaration(stat->s->simple_if.decl, false, false);
             }
@@ -1535,7 +1592,8 @@ void t_statement(struct Statement *stat) {
             } else {
                 assert(!"BAD! Declaration conditional clause with no variables e.g. if(i32) ...");
             }
-            p(")\n");
+            p(")");
+            NEWLINE();
 
 
             if (stat->s->simple_if.action->tag == Block) {
@@ -1551,7 +1609,8 @@ void t_statement(struct Statement *stat) {
                 global_indent_level -= 1;
                 p("\n");
                 tabs();
-                p("}\n");
+                p("}");
+                NEWLINE();
             }
             break;
         case IfElse:
@@ -1577,7 +1636,8 @@ void t_statement(struct Statement *stat) {
             } else {
                 assert(!"BAD! Declaration conditional clause with no variables e.g. if(i32) ...");
             }
-            p(")\n");
+            p(")");
+            NEWLINE();
 
 
             if (stat->s->if_else.action_true->tag == Block) {
@@ -1589,7 +1649,8 @@ void t_statement(struct Statement *stat) {
             }
 
             tabs();
-            p("else\n");
+            p("else");
+            NEWLINE();
             if (stat->s->if_else.action_false->tag == Block ||
                 (stat->s->if_else.action_false->tag == Selection &&
                     (stat->s->if_else.action_false->s->tag == If
@@ -1606,7 +1667,8 @@ void t_statement(struct Statement *stat) {
                 global_indent_level -= 1;
                 p("\n");
                 tabs();
-                p("}\n");
+                p("}");
+                NEWLINE();
             }
 
             break;
@@ -1614,7 +1676,7 @@ void t_statement(struct Statement *stat) {
             if (stat->s->switch_stat.decl != NULL) {
                 tabs();
                 p("{");
-                p("\n");
+                NEWLINE();
                 global_indent_level += 1;
                 t_declaration(stat->s->switch_stat.decl, false, false);
             }
@@ -1633,7 +1695,8 @@ void t_statement(struct Statement *stat) {
             } else {
                 assert(!"BAD! Declaration conditional clause with no variables e.g. switch(i32) ...");
             }
-            p(")\n");
+            p(")");
+            NEWLINE();
             if (stat->s->switch_stat.block->tag == Block) {
                 t_statement(stat->s->switch_stat.block);
             } else {
@@ -1646,7 +1709,8 @@ void t_statement(struct Statement *stat) {
                 global_indent_level -= 1;
                 p("\n");
                 tabs();
-                p("}\n");
+                p("}");
+                NEWLINE();
             }
         }
         break;
@@ -1660,19 +1724,23 @@ void t_statement(struct Statement *stat) {
                 p(" ");
                 t_expr(stat->j->return_stat.expr);
             }
-            p(";\n");
+            p(";");
+            NEWLINE();
             break;
         case Goto:
             tabs();
-            p("goto %s;\n", stat->j->goto_stat.label_name);
+            p("goto %s;", stat->j->goto_stat.label_name);
+            NEWLINE();
             break;
         case Break:
             tabs();
-            p("break;\n")
+            p("break;")
+            NEWLINE();
             break;
         case Continue:
             tabs();
-            p("continue;\n")
+            p("continue;")
+            NEWLINE();
             break;
         }
         break;
@@ -1684,7 +1752,8 @@ void t_statement(struct Statement *stat) {
             tabs();
             p("case ");
             t_expr(stat->l->case_expr->expr);
-            p(":\n");
+            p(":");
+            NEWLINE();
 
             global_indent_level += 1;
 
@@ -1693,14 +1762,16 @@ void t_statement(struct Statement *stat) {
         case Default_Label:
             global_indent_level -= 1;
             tabs();
-            p("default:\n");
+            p("default:");
+            NEWLINE();
             global_indent_level += 1;
 
             t_statement(stat->l->stat);
             break;
         case Label:
             tabs();
-            p("%s:\n", stat->l->label_name);
+            p("%s:", stat->l->label_name);
+            NEWLINE();
             t_statement(stat->l->stat);
             break;
         }
@@ -1711,7 +1782,8 @@ void t_statement(struct Statement *stat) {
             tabs();
             p("while (");
             t_expr(stat->i->while_dowhile_stat.expr);
-            p(")\n");
+            p(")");
+            NEWLINE();
             if (stat->i->while_dowhile_stat.stat->tag == Block) {
                 t_statement(stat->i->while_dowhile_stat.stat);
             } else {
@@ -1722,7 +1794,8 @@ void t_statement(struct Statement *stat) {
             break;
         case DoWhile:
             tabs();
-            p("do\n");
+            p("do");
+            NEWLINE();
             if (stat->i->while_dowhile_stat.stat->tag == Block) {
                 t_statement(stat->i->while_dowhile_stat.stat);
             } else {
@@ -1733,7 +1806,8 @@ void t_statement(struct Statement *stat) {
             tabs();
             p("while (");
             t_expr(stat->i->while_dowhile_stat.expr);
-            p(");\n");
+            p(");");
+            NEWLINE();
             break;
         case For_Decl:
             tabs();
@@ -1791,6 +1865,9 @@ void t_statement(struct Statement *stat) {
 
 void transpile(struct TopLevel *top) {
     printf("#include \"stdint.h\"\n");
+    if (pretty_filename != NULL)
+        printf("#line 1 \"%s\"\n", pretty_filename);
+
     sym_table = new_symbol_table();
     type_table = new_type_table();
     top_level_list = top;
@@ -1798,7 +1875,9 @@ void transpile(struct TopLevel *top) {
     while (top_level_list != NULL) {
         switch (top_level_list->tag) {
         case CInclude:
-            printf("\n#include %s\n", top_level_list->c_include);
+            printf("\n#include %s", top_level_list->c_include);
+            printf("\n");
+            newline_just_printed = true;
             break;
         case Decl:
             buffer_list = NULL;
@@ -1807,6 +1886,8 @@ void transpile(struct TopLevel *top) {
 
             buffer_list = create_buffer();
             current_buffer = buffer_list;
+
+            set_src(top_level_list->decl->source_line);
             t_declaration(top_level_list->decl, false, true /*top_level*/);
             print_buffer_list(buffer_list);
             destroy_buffer_list(buffer_list);

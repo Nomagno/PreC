@@ -22,6 +22,8 @@
     int yyerror(const char *s);
     int yylex(void);
     extern int yylineno;
+    extern char *filename;
+    extern char *pretty_filename;
 
 %}
 
@@ -711,8 +713,6 @@ top_level
 
 extern char yytext[];
 extern int column;
-
-extern char *filename;
 
 int yyerror(const char *s)
 {
