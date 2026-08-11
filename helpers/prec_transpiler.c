@@ -122,7 +122,7 @@ extern const char *pretty_filename;
                 newline_just_printed = 0; \
             } else { \
                 if (pretty_filename != NULL)\
-                    fprintf(current_buffer->stream, "#line \"%d\"\n", source_line); \
+                    fprintf(current_buffer->stream, "#line %d\n", source_line); \
                 source_line = 0; \
                 newline_just_printed = 0; \
                 tabs(); \
