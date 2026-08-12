@@ -4,7 +4,7 @@ struct MyDataType {
   // everything in this section is basically 'constexpr members', meaning they are optimized out into constants in the compiler type table, or mangled global variables depending on what the compiler feels like doing, but the main point is
   // they do not affect the space taken up by the data type
   i32 y = 5;
-  void (&)(struct MyDataType mut & self, i32 arg) add = ${ self->x = self->x + arg; };
+  void (&)(struct MyDataType mut & self, i32 arg) add = ${ self->x = self->x + arg + self->y; };
 };
 
 

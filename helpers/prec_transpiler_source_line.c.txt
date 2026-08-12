@@ -111,9 +111,8 @@ unsigned source_line = 0;
 // If a newline was just printed, then source_line must be != 0
 _Bool newline_just_printed = 0;
 
-extern const char *pretty_filename;
-
 #define p(...) {\
+    if (!dry_run) { \
         if (newline_just_printed) { \
             if (source_line == 0) { \
                 fprintf(stderr, "Warning: no source line for: \""); \
@@ -121,14 +120,12 @@ extern const char *pretty_filename;
                 fprintf(stderr, "\"\n"); \
                 newline_just_printed = 0; \
             } else { \
-                if (pretty_filename != NULL)\
-                    fprintf(current_buffer->stream, "#line %d\n", source_line); \
+                fprintf(current_buffer->stream, "#line %d\n", source_line); \
                 source_line = 0; \
                 newline_just_printed = 0; \
                 tabs(); \
             } \
         } \
-    if (!dry_run) { \
         int s = fprintf(current_buffer->stream, __VA_ARGS__);\
         fflush(current_buffer->stream);\
         if (s == -1)\
@@ -225,7 +222,7 @@ struct TypeBuffer {
     FILE *stream; // stream associated to the buffer
 
     QualifierBitVector base_type_qualifiers;
-
+    
     enum {Nothing, Left, Right} last_written_to_buffer;
 
     size_t left_buffer_pos;
@@ -277,7 +274,7 @@ void dispatch_function(struct TypeBuffer *type_buffer, char *arg_list[]) {
     size_t curr_pos = type_buffer->right_buffer_pos;
     type_buffer->right_buffer[curr_pos] = '(';
     curr_pos += 1;
-
+    
 
     arg_list = begginning;
 
@@ -285,7 +282,7 @@ void dispatch_function(struct TypeBuffer *type_buffer, char *arg_list[]) {
         size_t len = strlen(*arg_list);
         memcpy(type_buffer->right_buffer+curr_pos, *arg_list, len);
         curr_pos += strlen(*arg_list);
-
+        
         if (*(arg_list+1) != NULL)
             memcpy(type_buffer->right_buffer+curr_pos, ", ", 2);
 
@@ -304,7 +301,7 @@ void dispatch_array(struct TypeBuffer *type_buffer, struct Expr *expression) {
     if (expression != NULL) {
         char *expression_buffer = calloc(512, 1);
         FILE *stream = fmemopen(expression_buffer, 512, "w");
-
+        
         struct BufferList *saved_buffer = current_buffer;
         current_buffer = &(struct BufferList){ .stream = stream };
 
@@ -360,7 +357,7 @@ void dispatch_qualifiers(struct TypeBuffer *type_buffer, enum TypeSort tag, bool
             type_buffer->base_type_qualifiers |= Mut;
         else
             type_buffer->base_type_qualifiers &= ~Mut;
-
+        
         if (is_restrict)
             type_buffer->base_type_qualifiers |= Restrict;
         if (is_volatile)
@@ -374,7 +371,7 @@ void dispatch_qualifiers(struct TypeBuffer *type_buffer, enum TypeSort tag, bool
         } else {
             // No, we don't actually error out, we want to be able to gracefully handle this one as dispatch_qualifiers is used in more places than needed
             // on purpose:
-
+            
             //fprintf(stderr, "Compiler internal precondition violation: Don't know how to parse this internal type left buffer: %s.\n",
             //    type_buffer->left_buffer+type_buffer->left_buffer_pos);
             //assert(false);
@@ -560,7 +557,7 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
                     node = node->next;
                     continue;
                 }
-
+                
                 struct ConstVarList *var_node = node->decl->vars;
                 if (var_node != NULL) {
                     REWIND_LIST(var_node);
@@ -706,7 +703,7 @@ char *t_str_type(struct Type *x, char *identifier, bool fun_pointer_dereferenced
 void t_declaration(struct Declaration *decl, bool freeform, bool top_level);
 void t_statement(struct Statement *stat);
 
-void t_block(struct Block *b, struct TypeParamList *param_list) {
+void t_block(struct Block *b) {
     if (b == NULL) {
         tabs();
         p("{ }");
@@ -718,19 +715,8 @@ void t_block(struct Block *b, struct TypeParamList *param_list) {
     p("{");
     NEWLINE();
 
+
     global_indent_level += 1;
-
-    // if this block is part of a function, register the parameters in the symbol table
-    if (param_list != NULL) {
-        REWIND_LIST(param_list);
-        while (param_list != NULL) {
-            if (param_list->param != NULL && param_list->param->name != NULL) {
-                insert_symbol(sym_table, param_list->param->name, param_list->param->type, global_indent_level);
-            }
-            param_list = param_list->next;
-        }
-    }
-
 
     struct BlockList *node = b->contents;
     REWIND_LIST(node);
@@ -740,15 +726,15 @@ void t_block(struct Block *b, struct TypeParamList *param_list) {
             set_src(node->item->decl->source_line);
             t_declaration(node->item->decl, false, false /*top_level*/);
 
-
             // purely cosmetic newline
             set_src(node->item->decl->source_line);
             NEWLINE();
             break;
         case Statement:
             set_src(node->item->stat->source_line);
-             t_statement(node->item->stat);
+            t_statement(node->item->stat);
             //NEWLINE();
+            break;
         }
         node = node->next;
     }
@@ -756,7 +742,7 @@ void t_block(struct Block *b, struct TypeParamList *param_list) {
     global_indent_level -= 1;
 
     set_src(b->source_line);
-     tabs();
+    tabs();
     p("}");
     NEWLINE();
 }
@@ -836,15 +822,13 @@ void t_initializer(struct Initializer *x, struct Type *t) {
         asprintf(&unique_temporary_identifier, "_prec_anon_%d", global_identifier_counter);
         global_identifier_counter += 1;
 
-        x->code_backchannel = unique_temporary_identifier;
-
         p("static ");
 
         char *decl = t_str_type(t, unique_temporary_identifier, true /*dereference function pointer*/);
         set_src(x->source_line);
         p("%s", decl);
         // print the code itself
-        t_block(x->code, t->fun_pointer.param_list);
+        t_block(x->code);
 
         current_buffer = saved_buffer;
         global_indent_level = saved_indent;
@@ -878,7 +862,7 @@ struct Type *t_expr(struct Expr *x) {
             t = t_expr(x->unOp.e);
             return_type = DUP_T(Type, Reference,
                 .reference = t,
-                .source_line = (t != NULL) ? t->source_line : x->source_line
+                .source_line = t->source_line
             );
             break;
         case Deref:
@@ -1040,10 +1024,7 @@ struct Type *t_expr(struct Expr *x) {
         break;
     case Identifier:
         p("%s", x->identifier);
-        // Don't bother with calculating the return type for prec anon stuff, they are not in the symbol table.
-        if (strcmp(x->identifier, "_prec_anon") != 0) {
-            return_type = fetch_symbol_type(sym_table, x->identifier);
-        }
+        return_type = fetch_symbol_type(sym_table, x->identifier);
         break;
     case Float:
         p("%lf", x->fp_num);
@@ -1088,8 +1069,6 @@ struct Type *t_expr(struct Expr *x) {
 
         // if false, we need to perform a real run later
         bool is_constdata_access = false;
-        bool constdata_inlined = false;
-        struct Expr *constdata_inlined_value = NULL;
 
         if (t && t->tag == Struct) {
             if (t->struct_or_union_def.name != NULL) {
@@ -1104,58 +1083,9 @@ struct Type *t_expr(struct Expr *x) {
                         while (!is_constdata_access && vars != NULL) {
                             if (strcmp(vars->decl->name, x->struct_access_deref.member) == 0) {
                                 is_constdata_access = true;
-
-                                struct Type *inline_type = decls->decl->type;
-                                DISCARD_QUALIFIERS(inline_type);
-                                if (inline_type->tag == FunPointer || inline_type->tag == Reference || isBaseType(inline_type->tag)) {
-                                    if (vars->decl->val == NULL) {
-                                        constdata_inlined = true;
-                                        constdata_inlined_value =
-                                            DUP_T(Expr, Cast,
-                                                .cast = {
-                                                    .type = inline_type,
-                                                    .e =
-                                                        DUP_T(Expr, Int,
-                                                            .int_num = 0
-                                                        )
-                                                }, 
-                                                .source_line = x->source_line
-                                            );
-                                    } else if (vars->decl->val->tag == Expr) {
-                                        constdata_inlined = true;
-                                        constdata_inlined_value =
-                                            DUP_T(Expr, Cast,
-                                                .cast = {
-                                                    .type = inline_type,
-                                                    .e = vars->decl->val->expr
-                                                }, 
-                                                .source_line = x->source_line
-                                            );
-                                    } else if (vars->decl->val->tag == Code) {
-                                        constdata_inlined = true;
-                                        constdata_inlined_value =
-                                            DUP_T(Expr, Unary,
-                                                .unOp = {
-                                                    .tag = Ref,
-                                                    .e = DUP_T(Expr, Identifier,
-                                                        .identifier = vars->decl->val->code_backchannel,
-                                                        .source_line = x->source_line
-                                                    )
-                                                },
-                                                .source_line = x->source_line
-                                            );
-                                    } else {
-                                        //fprintf(stderr, "Debug %c %s\n", vars->decl->val->tag, vars->decl->val->code_backchannel);
-                                        //exit(1);
-                                    }
-
-                                }
                                 dry_run = saved_dr;
-
-                                if (!constdata_inlined) {
-                                    p("_prec_internal_constdata_struct_%s_%s",
-                                        t->struct_or_union_def.name, x->struct_access_deref.member);
-                                }
+                                p("_prec_internal_constdata_struct_%s",
+                                    t->struct_or_union_def.name);
                             }
                             vars = vars->next;
                         }
@@ -1165,22 +1095,19 @@ struct Type *t_expr(struct Expr *x) {
             }
         }
         dry_run = saved_dr;
-
-        if (constdata_inlined || is_constdata_access) {
-            t_expr(constdata_inlined_value);
-        } else {
+        if (!is_constdata_access) {
             t = t_expr(x->struct_access_deref.e);
-
-            if (x->tag == StructDeref && !is_constdata_access) {
-                p("->");
-            } else {
-                p(".");
-            }
-
-            // TODO: complete type inference (pass down the type of the access as return_type)
-            //       using the type table too
-            p("%s", x->struct_access_deref.member);
         }
+
+        if (x->tag == StructDeref && !is_constdata_access) {
+            p("->");
+        } else {
+            p(".");
+        }
+
+        // TODO: complete type inference (pass down the type of the access as return_type)
+        //       using the type table too
+        p("%s", x->struct_access_deref.member);
         break;
     case StructDerefMethod:
     case StructMethod: {
@@ -1213,8 +1140,8 @@ struct Type *t_expr(struct Expr *x) {
                             if (strcmp(vars->decl->name, x->struct_access_deref.member) == 0) {
                                 is_constdata_access = true;
                                 dry_run = saved_dr;
-                                p("_prec_internal_constdata_struct_%s_%s",
-                                    t->struct_or_union_def.name, x->struct_access_deref.member);
+                                p("_prec_internal_constdata_struct_%s",
+                                    t->struct_or_union_def.name);
                             }
                             vars = vars->next;
                         }
@@ -1226,22 +1153,22 @@ struct Type *t_expr(struct Expr *x) {
         dry_run = saved_dr;
         if (!is_constdata_access) {
             t = t_expr(x->struct_access_deref.e);
-
-            if (x->tag == StructMethod) {
-                p("->");
-            } else {
-                p(".");
-            }
-
-            // TODO: complete type inference (pass down the type of the access as return_type)
-            //       using the type table too
-            p("%s", x->struct_access_deref.member);
         }
+
+        if (x->tag == StructMethod && !is_constdata_access) {
+            p("->");
+        } else {
+            p(".");
+        }
+
+        // TODO: complete type inference (pass down the type of the access as return_type)
+        //       using the type table too
+        p("%s", x->struct_access_deref.member);
 
         struct ArgumentExpressionList *curr = x->struct_access_deref.method_args;
         if (curr == NULL) {
             p("(");
-            if (x->tag == StructMethod)
+            if (x->tag == StructDerefMethod)
                 p("&");
             t_expr(x->struct_access_deref.e);
             p(")");
@@ -1395,47 +1322,69 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
             // Currently, constdata not supported for structs
             // declared along with variables in the same decl,
             // mostly because it's annoying to implement
-
             if (decl->vars == NULL && node_constdata != NULL) {
-                // Create a _prec_internal_constdata_struct_ ## structname _ ## fieldname
-                //    const global variable declaration
-                //    for each field,
-                //    that contains the constdata field, then
+                // Create a _prec_internal_constdata_struct_##structname
+                //    const global variable declaration object
+                //    as an anonymous struct,
+                //    that contains the constdata fields, then
                 //    set it to be initialized to the proper data.
                 // Add the helper annotations for function-valued literals.
 
-                struct TopLevel *head_of_inserted_constdata_fields = NULL;
+                // build the top-level declaration
+                struct Declaration *decl =
+                    DUP((struct Declaration){
+                        .class = Static,
+                        .type = DUP_T(
+                                Type,
+                                Struct,
+                                .struct_or_union_def = {
+                                    .name = NULL,
+                                    .const_data = NULL,
+                                    .declarations = node_constdata,
+                                },
+                                .source_line = t->struct_or_union_def.const_data->source_line
+                        ),
+                        .source_line = t->struct_or_union_def.const_data->source_line
+                    });
+                char *full_name;
 
+                // add one var
+                asprintf(&full_name, "_prec_internal_constdata_struct_%s",
+                    t->struct_or_union_def.name);
+                decl->vars = DUP((struct VarList){
+                    .decl = DUP((struct VarDecl) {
+                        .name = full_name,
+                        .val = NULL,
+                        .source_line = t->struct_or_union_def.const_data->source_line
+                    }),
+                    .prev = NULL,
+                    .next = NULL,
+                    .source_line = t->struct_or_union_def.const_data->source_line
+                });
+
+                // build the initializer
+                struct InitializerList *init_list = NULL;
                 while (node_constdata != NULL) {
                     struct Type *constdata_curr_decl_type = node_constdata->decl->type;
                     struct ConstVarList *vars_node = node_constdata->decl->vars;
                     REWIND_LIST(vars_node);
                     while (vars_node != NULL) {
-
-                        // build the top-level declaration
-                        struct Declaration *constdata_field_decl =
-                            DUP((struct Declaration){
-                                .class = Static,
-                                .type = node_constdata->decl->type,
-                                .source_line = t->struct_or_union_def.const_data->source_line
+                        init_list = DUP((struct InitializerList) {
+                            .designation = DUP((struct DesignatorList) {
+                                    .desig = DUP_T(
+                                        Designator, Access,
+                                        .access = vars_node->decl->name,
+                                        .source_line = vars_node->decl->source_line
+                                    ),
+                                    .source_line = vars_node->decl->source_line
+                                }),
+                            .current = vars_node->decl->val,
+                            .prev = init_list,
+                            .source_line = vars_node->decl->val->source_line
                             });
-                        DISCARD_QUALIFIERS(constdata_field_decl->type);
-
-                        char *full_name;
-                        // add one var
-                        asprintf(&full_name, "_prec_internal_constdata_struct_%s_%s",
-                            t->struct_or_union_def.name, vars_node->decl->name);
-                        constdata_field_decl->vars = DUP((struct VarList){
-                            .decl = DUP((struct VarDecl) {
-                                .name = full_name,
-                                .val = vars_node->decl->val,
-                                .source_line = t->struct_or_union_def.const_data->source_line
-                            }),
-                            .prev = NULL,
-                            .next = NULL,
-                            .source_line = t->struct_or_union_def.const_data->source_line
-                        });
-
+                        if (init_list->prev != NULL) {
+                            init_list->prev->next = init_list;
+                        }
                         // to translate code like this,
                         // the code must be able to access the type we're
                         // dealing with in the first place,
@@ -1447,50 +1396,40 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
                         //       Maybe make a branch of the PreC transpiler that targets C23 in the future?
                         // to achieve this, we will translate the declaration AFTER the current declaration,
                         // by inserting it for top_level.
-                        if (vars_node->decl->val->tag == Code) {
+                        if (init_list->current->tag == Code) {
                             if (top_level) {
-                                vars_node->decl->val = DUP_T(Initializer, Expr,
+                                init_list->current = DUP_T(Initializer, Expr,
                                     .expr = DUP_T(Expr, CompoundLiteral,
                                         .compound_literal.type = constdata_curr_decl_type,
-                                        .compound_literal.init = vars_node->decl->val,
-                                        .source_line = vars_node->decl->source_line
+                                        .compound_literal.init = init_list->current,
+                                        .source_line = init_list->current->source_line
                                     ),
-                                    .source_line = vars_node->source_line
+                                    .source_line = init_list->source_line
                                 );
                             }
                         }
-
-                        if (head_of_inserted_constdata_fields == NULL) {
-                            struct TopLevel *saved_next = top_level_list->next;
-                            top_level_list->next = DUP_T(TopLevel, Decl,
-                                .decl = constdata_field_decl,
-                                .prev = top_level_list,
-                                .source_line = constdata_field_decl->source_line
-                            );
-                            top_level_list->next->next = saved_next;
-                            head_of_inserted_constdata_fields = top_level_list->next;
-                        } else {
-                            struct TopLevel *saved_next = head_of_inserted_constdata_fields->next;
-                            head_of_inserted_constdata_fields->next = DUP_T(TopLevel, Decl,
-                                .decl = constdata_field_decl,
-                                .prev = top_level_list,
-                                .source_line = constdata_field_decl->source_line
-                            );
-                            head_of_inserted_constdata_fields->next->next = saved_next;
-                            head_of_inserted_constdata_fields = head_of_inserted_constdata_fields->next;
-                        }
-
-
                         vars_node = vars_node->next;
                     }
                     node_constdata = node_constdata->next;
                 }
 
+                decl->vars->decl->val = DUP_T(Initializer, Data,
+                    .data = init_list,
+                    .source_line = decl->vars->decl->source_line
+                );
+
                 NEWLINE();
+                struct TopLevel *saved_next = top_level_list->next;
+                top_level_list->next = DUP_T(TopLevel, Decl,
+                    .decl = decl,
+                    .prev = top_level_list,
+                    .source_line = decl->source_line
+                );
+                top_level_list->next->next = saved_next;
             } else if (decl->vars != NULL && node_constdata != NULL) {
                 // TODO: error out PROPERLY with a 'compiler limitation'
                 // error as per the above comment
-                assert(!"Compiler limitation: can't have constdata in a struct declared as part of a variable declaration");
+                assert(!"Compiler limitation: can't have const");
             }
         }
     }
@@ -1510,9 +1449,7 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
             // top level functions with no qualifiers and a function initializer get implicitly converted to declarations/definitions
             if (top_level && decl->type->tag == FunPointer && node->decl->val->tag == Code) {
                 p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, true));
-                t_block(node->decl->val->code, decl->type->fun_pointer.param_list);
-
-                insert_symbol(sym_table, node->decl->name, decl->type, global_indent_level);
+                t_block(node->decl->val->code);
             } else {
                 p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, false));
                 p(" = ");
@@ -1532,8 +1469,6 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
 
                 if (freeform) { p("; "); }
                 else          { p(";"); NEWLINE(); }
-
-                insert_symbol(sym_table, node->decl->name, decl->type, global_indent_level);
             } else {
                 p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, false));
 
@@ -1559,7 +1494,7 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
 void t_statement(struct Statement *stat) {
     switch (stat->tag) {
     case Block:
-        t_block(stat->b, NULL);
+        t_block(stat->b);
         break;
     case Expr:
         tabs();
@@ -1617,7 +1552,7 @@ void t_statement(struct Statement *stat) {
             if (stat->s->if_else.decl != NULL) {
                 tabs();
                 p("{");
-                p("\n");
+                NEWLINE();
                 global_indent_level += 1;
                 t_declaration(stat->s->if_else.decl, false, false);
             }
@@ -1639,7 +1574,6 @@ void t_statement(struct Statement *stat) {
             p(")");
             NEWLINE();
 
-
             if (stat->s->if_else.action_true->tag == Block) {
                 t_statement(stat->s->if_else.action_true);
             } else {
@@ -1651,6 +1585,7 @@ void t_statement(struct Statement *stat) {
             tabs();
             p("else");
             NEWLINE();
+
             if (stat->s->if_else.action_false->tag == Block ||
                 (stat->s->if_else.action_false->tag == Selection &&
                     (stat->s->if_else.action_false->s->tag == If
@@ -1820,13 +1755,10 @@ void t_statement(struct Statement *stat) {
                                 "please declare them in the outer scope.\n");
                 exit(1);
             }
-
+            
             t_declaration(stat->i->for_stat_decl.init, true /*freeform: no newlines and no indents*/, false /*top_level*/);
-
-            if (stat->i->for_stat_decl.clause != NULL)
-                t_expr(stat->i->for_stat_decl.clause);
+            t_expr(stat->i->for_stat_decl.clause);
             p("; ");
-
             if (stat->i->for_stat_decl.update != NULL)
                 t_expr(stat->i->for_stat_decl.update);
 
@@ -1860,17 +1792,15 @@ void t_statement(struct Statement *stat) {
                 t_statement(stat->i->for_stat_expr.stat);
                 global_indent_level -= 1;
             }
-
+            
             break;
         }
     }
 }
 
-void transpile(struct TopLevel *top) {
-    printf("#include \"stdint.h\"\n");
-    if (pretty_filename != NULL)
-        printf("#line 1 \"%s\"\n", pretty_filename);
-
+void transpile(struct TopLevel *top, const char *filename) {
+    printf("#include <stdint.h>\n");
+    printf("#line 1 %s \n", filename);
     sym_table = new_symbol_table();
     type_table = new_type_table();
     top_level_list = top;
