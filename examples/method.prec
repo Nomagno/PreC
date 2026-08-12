@@ -16,5 +16,5 @@ i32 (&)(void) main = ${
     printf("%d\n", datptr->x); // 9
     printf("%d\n", datptr->y); // 5
     datptr->.add(7); // method access
-    printf("%d\n", datptr->x); // 16
+    printf("%d\n", datptr->x); // 21
 };
