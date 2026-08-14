@@ -112,6 +112,9 @@ unsigned source_line = 0;
 _Bool newline_just_printed = 0;
 
 extern const char *pretty_filename;
+extern const char *filename;
+
+#define FILENAME_GRACEFUL ((pretty_filename != NULL) ? pretty_filename : filename)
 
 #define p(...) {\
         if (newline_just_printed) { \
@@ -480,7 +483,8 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
             while (node != NULL) {
                 // We substract 1 because cell at index 64 will be used for implicit null termination
                 if (arg_i >= sizeof(arg_list)/sizeof(char *)-1) {
-                    fprintf(stderr, "Compiler error: Function definitions can't have more than 64 arguments (uh, wtf?)\n");
+                    fprintf(stderr, "%s:%d:%d: Compiler error: Function definitions can't have more than 64 arguments (uh, wtf?)\n",
+                            FILENAME_GRACEFUL, x->source_line, 1);
                     exit(1);
                 }
                 arg_list[arg_i] = t_str_type(node->param->type, node->param->name, false);
@@ -534,7 +538,7 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
         break;
     }
     case TypeofType: {
-        p_t("typeof<%s>", t_str_type(x->typeof_type, NULL, false));
+        p_t("typeof(%s)", t_str_type(x->typeof_type, NULL, false));
         break;
     }
     case Struct:
@@ -683,7 +687,8 @@ char *t_str_type(struct Type *x, char *identifier, bool fun_pointer_dereferenced
         if (strncmp(type_buffer->left_buffer+type_buffer->left_buffer_pos+size-strlen("*const")-1,
                     "*const",
                     strlen("*const")) != 0) {
-            fprintf(stderr, "Compiler error: Function must be dereferenced but can't.\n");
+            fprintf(stderr, "%s:%d:%d: Compiler error: Function must be dereferenced but can't.\n",
+                    FILENAME_GRACEFUL, x->source_line, 1);
             exit(1);
         }
         memcpy(type_buffer->left_buffer+type_buffer->left_buffer_pos+size-strlen("*const")-1, "               ", strlen("*const"));
@@ -725,7 +730,7 @@ void t_block(struct Block *b, struct TypeParamList *param_list) {
         REWIND_LIST(param_list);
         while (param_list != NULL) {
             if (param_list->param != NULL && param_list->param->name != NULL) {
-                insert_symbol(sym_table, param_list->param->name, param_list->param->type, global_indent_level);
+                push_symbol(sym_table, param_list->param->name, param_list->param->type, false /*is_global*/);
             }
             param_list = param_list->next;
         }
@@ -809,15 +814,20 @@ void t_initializer(struct Initializer *x, struct Type *t) {
         break;
     case Code:
         if (t == NULL) {
-            fprintf(stderr, "Compiler error: Function initializer without explicit type\n");
+            fprintf(stderr, "%s:%d:%d: Compiler error: Function initializer without explicit type\n",
+                    FILENAME_GRACEFUL, x->source_line, 1);
             exit(1);
         }
 
         DISCARD_QUALIFIERS(t);
         if (t->tag != FunPointer) {
-            fprintf(stderr, "Compiler error: Explicit type of function initializer must be a function pointer %c\n", t->tag);
+            fprintf(stderr, "%s:%d:%d: Compiler error: Explicit type of function initializer must be a function pointer %c\n",
+                FILENAME_GRACEFUL, x->source_line, 1, t->tag);
             exit(1);
         }
+
+        if (dry_run)
+            return;
 
         // As explanied above, we create a new buffer to print to,
         // print the code to it, then restore the current buffer.
@@ -844,14 +854,19 @@ void t_initializer(struct Initializer *x, struct Type *t) {
         set_src(x->source_line);
         p("%s", decl);
         // print the code itself
+
+        // TODO: save the symbols up to the global marker, pop them out of the stack
+        // new global marker
+        push_symbol(sym_table, NULL, NULL, true);
         t_block(x->code, t->fun_pointer.param_list);
+        // TODO: push the saved symbols back in
 
         current_buffer = saved_buffer;
         global_indent_level = saved_indent;
 
         // This will have been set to true by t_block()
         newline_just_printed = false;
-        p("&%s", unique_temporary_identifier);
+        p("(&%s)", unique_temporary_identifier);
         break;
     }
 }
@@ -1118,7 +1133,7 @@ struct Type *t_expr(struct Expr *x) {
                                                         DUP_T(Expr, Int,
                                                             .int_num = 0
                                                         )
-                                                }, 
+                                                },
                                                 .source_line = x->source_line
                                             );
                                     } else if (vars->decl->val->tag == Expr) {
@@ -1128,7 +1143,7 @@ struct Type *t_expr(struct Expr *x) {
                                                 .cast = {
                                                     .type = inline_type,
                                                     .e = vars->decl->val->expr
-                                                }, 
+                                                },
                                                 .source_line = x->source_line
                                             );
                                     } else if (vars->decl->val->tag == Code) {
@@ -1167,7 +1182,9 @@ struct Type *t_expr(struct Expr *x) {
         dry_run = saved_dr;
 
         if (constdata_inlined || is_constdata_access) {
+            p("(");
             t_expr(constdata_inlined_value);
+            p(")");
         } else {
             t = t_expr(x->struct_access_deref.e);
 
@@ -1407,7 +1424,7 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
                 struct TopLevel *head_of_inserted_constdata_fields = NULL;
 
                 while (node_constdata != NULL) {
-                    struct Type *constdata_curr_decl_type = node_constdata->decl->type;
+                    //struct Type *constdata_curr_decl_type = node_constdata->decl->type;
                     struct ConstVarList *vars_node = node_constdata->decl->vars;
                     REWIND_LIST(vars_node);
                     while (vars_node != NULL) {
@@ -1442,42 +1459,34 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
                         // else the ergonomics make no sense.
                         // so the symbol for this must be inserted AFTER the type.
                         // this must only be done in the case of top-level types.
+                        // to achieve this, we will translate the declaration AFTER the current declaration,
+                        // by inserting it for top_level or translating directly.
                         // TODO: As of C23, this can be achieved for non-top-level types as well
                         //       Because of the rules that allow for limited structural typing.
                         //       Maybe make a branch of the PreC transpiler that targets C23 in the future?
-                        // to achieve this, we will translate the declaration AFTER the current declaration,
-                        // by inserting it for top_level.
-                        if (vars_node->decl->val->tag == Code) {
-                            if (top_level) {
-                                vars_node->decl->val = DUP_T(Initializer, Expr,
-                                    .expr = DUP_T(Expr, CompoundLiteral,
-                                        .compound_literal.type = constdata_curr_decl_type,
-                                        .compound_literal.init = vars_node->decl->val,
-                                        .source_line = vars_node->decl->source_line
-                                    ),
-                                    .source_line = vars_node->source_line
-                                );
-                            }
-                        }
 
-                        if (head_of_inserted_constdata_fields == NULL) {
-                            struct TopLevel *saved_next = top_level_list->next;
-                            top_level_list->next = DUP_T(TopLevel, Decl,
-                                .decl = constdata_field_decl,
-                                .prev = top_level_list,
-                                .source_line = constdata_field_decl->source_line
-                            );
-                            top_level_list->next->next = saved_next;
-                            head_of_inserted_constdata_fields = top_level_list->next;
+                        if (top_level) {
+                            if (head_of_inserted_constdata_fields == NULL) {
+                                struct TopLevel *saved_next = top_level_list->next;
+                                top_level_list->next = DUP_T(TopLevel, Decl,
+                                    .decl = constdata_field_decl,
+                                    .prev = top_level_list,
+                                    .source_line = constdata_field_decl->source_line
+                                );
+                                top_level_list->next->next = saved_next;
+                                head_of_inserted_constdata_fields = top_level_list->next;
+                            } else {
+                                struct TopLevel *saved_next = head_of_inserted_constdata_fields->next;
+                                head_of_inserted_constdata_fields->next = DUP_T(TopLevel, Decl,
+                                    .decl = constdata_field_decl,
+                                    .prev = top_level_list,
+                                    .source_line = constdata_field_decl->source_line
+                                );
+                                head_of_inserted_constdata_fields->next->next = saved_next;
+                                head_of_inserted_constdata_fields = head_of_inserted_constdata_fields->next;
+                            }
                         } else {
-                            struct TopLevel *saved_next = head_of_inserted_constdata_fields->next;
-                            head_of_inserted_constdata_fields->next = DUP_T(TopLevel, Decl,
-                                .decl = constdata_field_decl,
-                                .prev = top_level_list,
-                                .source_line = constdata_field_decl->source_line
-                            );
-                            head_of_inserted_constdata_fields->next->next = saved_next;
-                            head_of_inserted_constdata_fields = head_of_inserted_constdata_fields->next;
+                            t_declaration(constdata_field_decl, false /*freeform*/, false /*top_level*/);
                         }
 
 
@@ -1490,7 +1499,8 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
             } else if (decl->vars != NULL && node_constdata != NULL) {
                 // TODO: error out PROPERLY with a 'compiler limitation'
                 // error as per the above comment
-                assert(!"Compiler limitation: can't have constdata in a struct declared as part of a variable declaration");
+                fprintf(stderr, "%s:%d:%d: Compiler limitation: can't have constdata in a struct declared as part of a variable declaration\n",
+                        FILENAME_GRACEFUL, decl->vars->source_line, 1);
             }
         }
     }
@@ -1510,9 +1520,13 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
             // top level functions with no qualifiers and a function initializer get implicitly converted to declarations/definitions
             if (top_level && decl->type->tag == FunPointer && node->decl->val->tag == Code) {
                 p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, true));
-                t_block(node->decl->val->code, decl->type->fun_pointer.param_list);
 
-                insert_symbol(sym_table, node->decl->name, decl->type, global_indent_level);
+                push_symbol(sym_table, node->decl->name, decl->type, top_level);
+                node->decl->val->code_backchannel = node->decl->name;
+
+                // Empty marker on symbol stack
+                push_symbol(sym_table, NULL, NULL, true /*is_global*/);
+                t_block(node->decl->val->code, decl->type->fun_pointer.param_list);
             } else {
                 p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, false));
                 p(" = ");
@@ -1521,7 +1535,7 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
                 // TODO: make sure to cull symbols every time a scope is exited,
                 // for now we just insert, this won't fail to compile any
                 // valid programs at least
-                insert_symbol(sym_table, node->decl->name, decl->type, global_indent_level);
+                push_symbol(sym_table, node->decl->name, decl->type, top_level);
 
                 if (freeform) { p("; "); }
                 else          { p(";"); NEWLINE(); }
@@ -1533,14 +1547,14 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
                 if (freeform) { p("; "); }
                 else          { p(";"); NEWLINE(); }
 
-                insert_symbol(sym_table, node->decl->name, decl->type, global_indent_level);
+                push_symbol(sym_table, node->decl->name, decl->type, top_level);
             } else {
                 p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, false));
 
                 // TODO: make sure to cull symbols every time a scope is exited,
                 // for now we just insert, this won't fail to compile any
                 // valid programs at least
-                insert_symbol(sym_table, node->decl->name, decl->type, global_indent_level);
+                push_symbol(sym_table, node->decl->name, decl->type, top_level);
 
                 // in preC, all non-extern variables are zero-initialized by default if no initializer is specified
                 // Check if it's a VLA (if any of the array types contained within are not 100% constant expressions). If it's the case, do not print the initializer
@@ -1590,7 +1604,8 @@ void t_statement(struct Statement *stat) {
                 // as the clause
                 p("%s", stat->s->simple_if.decl->vars->decl->name);
             } else {
-                assert(!"BAD! Declaration conditional clause with no variables e.g. if(i32) ...");
+                fprintf(stderr, "%s:%d:%d: Compiler Error: BAD! Declaration conditional clause with no variables e.g. if(i32) ...\n",
+                        FILENAME_GRACEFUL, stat->s->source_line, 1);
             }
             p(")");
             NEWLINE();
@@ -1634,7 +1649,8 @@ void t_statement(struct Statement *stat) {
                 // as the clause
                 p("%s", stat->s->if_else.decl->vars->decl->name);
             } else {
-                assert(!"BAD! Declaration conditional clause with no variables e.g. if(i32) ...");
+                fprintf(stderr, "%s:%d:%d: Compiler Error: BAD! Declaration conditional clause with no variables e.g. if(i32) ...\n",
+                        FILENAME_GRACEFUL, stat->s->source_line, 1);
             }
             p(")");
             NEWLINE();
@@ -1693,7 +1709,8 @@ void t_statement(struct Statement *stat) {
                 // as the clause
                 p("%s", stat->s->switch_stat.decl->vars->decl->name);
             } else {
-                assert(!"BAD! Declaration conditional clause with no variables e.g. switch(i32) ...");
+                fprintf(stderr, "%s:%d:%d: Compiler Error: BAD! Declaration conditional clause with no variables e.g. switch(i32) ...\n",
+                        FILENAME_GRACEFUL, stat->s->source_line, 1);
             }
             p(")");
             NEWLINE();
@@ -1815,9 +1832,10 @@ void t_statement(struct Statement *stat) {
 
             struct VarList *vars = stat->i->for_stat_decl.init->vars;
             if (vars != NULL && vars->prev != NULL) {
-                fprintf(stderr, "Compiler error: Initializer of for loop can only have one variable.\n"
+                fprintf(stderr, "%s:%d:%d: Compiler error: Initializer of for loop can only have one variable.\n"
                                 "                If you must have several loop variables, "
-                                "please declare them in the outer scope.\n");
+                                "please declare them in the outer scope.\n",
+                        FILENAME_GRACEFUL, vars->source_line, 1);
                 exit(1);
             }
 
