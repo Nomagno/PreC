@@ -1426,6 +1426,12 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
                 while (node_constdata != NULL) {
                     //struct Type *constdata_curr_decl_type = node_constdata->decl->type;
                     struct ConstVarList *vars_node = node_constdata->decl->vars;
+
+                    if (vars_node == NULL) {
+                        node_constdata = node_constdata->next;
+                        continue;
+                    }
+
                     REWIND_LIST(vars_node);
                     while (vars_node != NULL) {
 
