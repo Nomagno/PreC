@@ -447,7 +447,7 @@ concrete_type
     : base_type
     | TYPEOF '(' expression ')'
         { $$ = DUP_T(Type, TypeofExpr, .typeof_expr = $3); }
-    | TYPEOF '<' type '>'
+    | TYPEOF '(' type ')'
         { $$ = DUP_T(Type, TypeofType, .typeof_type = $3); }
     | '@' IDENTIFIER /*Itentifier types are only for use with c_include*/
         { $$ = DUP_T(Type, CType, .c_type = $2); }
