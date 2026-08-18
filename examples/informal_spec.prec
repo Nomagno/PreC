@@ -20,6 +20,17 @@
 //     printf("ERROR CODE: %d\n", -val);
 // the declaration allows multiple variables
 // if the expression is ommitted, then the LAST variable will be used as the clasue by itself
+// also works for ``switch'' statements
+
+// switch statement auto-inserts ``break;'' at the end of each case.
+// cases and default REQUIRE braces (you can omit them if it's only one statement), can use ``fall"" to stop the break auto-inserting:
+// switch (x) {
+//  case 1: {code; code;} fall;
+//  case 2: {code; code;}
+//  default: {
+//    code;
+//    code;
+//  }
 
 // - no typedef:
 //      struct vector { i32 x, y; };

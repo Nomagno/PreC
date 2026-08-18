@@ -418,7 +418,7 @@ struct JumpStatement {
 };
 
 struct LabeledStatement {
-    enum { Case='c', Default_Label='d', Label='l' } tag;
+    enum { Case='c', CaseFall='f', Default_Label='d', Label='l' } tag;
     char *label_name; // For the Label case
     struct ConstExpr *case_expr; // For the Case case
     struct Statement *stat; // For all cases

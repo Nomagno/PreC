@@ -1577,6 +1577,7 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
 }
 
 void t_statement(struct Statement *stat) {
+    set_src(stat->source_line);
     switch (stat->tag) {
     case Block:
         t_block(stat->b, NULL);
@@ -1770,6 +1771,24 @@ void t_statement(struct Statement *stat) {
     case Labeled:
         switch (stat->l->tag) {
         case Case:
+            global_indent_level -= 1;
+
+            tabs();
+            p("case ");
+            t_expr(stat->l->case_expr->expr);
+            p(":");
+            NEWLINE();
+
+            global_indent_level += 1;
+
+            t_statement(stat->l->stat);
+
+            set_src(stat->source_line);
+            tabs();
+            p("break;")
+            NEWLINE();
+            break;
+        case CaseFall:
             global_indent_level -= 1;
 
             tabs();

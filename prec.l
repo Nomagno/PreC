@@ -30,6 +30,7 @@ void comment(void);
 "bxor"	    	{ count(); return(XOR); }
 "bor"    		{ count(); return(OR); }
 "break"			{ count(); return(BREAK); }
+"fall"			{ count(); return(FALL); }
 "case"			{ count(); return(CASE); }
 "mut"			{ count(); return(MUT); }
 "continue"		{ count(); return(CONTINUE); }

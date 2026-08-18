@@ -96,11 +96,13 @@
 %type <jump_stat> jump_statement
 %type <iteration_stat> iteration_statement
 %type <labeled_stat> labeled_statement
+%type <labeled_stat> labeled_statement_switch
 %type <selection_stat> selection_statement
 
 %type <arg_list> argument_expression_list
 
 %type <block> compound_statement
+%type <block_list> labeled_statement_list
 %type <block_list> block_item_list
 %type <block_item> block_item
 
@@ -145,7 +147,7 @@
 %left '*' '/' '%'
 %right '&' '^' '!' '~' NOT
 
-%token CASE DEFAULT IF ELSE SWITCH WHILE DO FOR GOTO CONTINUE BREAK RETURN
+%token CASE DEFAULT IF ELSE SWITCH WHILE DO FOR GOTO CONTINUE BREAK FALL RETURN
 
 %start top_level
 
@@ -600,13 +602,47 @@ statement
 	    { $$ = DUP_T(Statement, Jump, .j = $1); }
 	;
 
+labeled_statement_list
+	: labeled_statement
+	    { $$ =
+	        DUP(
+	            (struct BlockList){
+	                .item = DUP_T(BlockItem, Statement,
+	                    .stat = DUP_T(Statement, Labeled, .l = $1)
+	                ),
+	                .next = NULL
+	            }
+	        );
+	    }
+	| labeled_statement_list labeled_statement
+	    { $1->next = DUP((struct BlockList){ .item = DUP_T(BlockItem, Statement, .stat = DUP_T(Statement, Labeled, .l = $2)), .prev = $1, .next = NULL }); $$ = $1->next; }
+	| labeled_statement_switch
+	    { $$ =
+	        DUP(
+	            (struct BlockList){
+	                .item = DUP_T(BlockItem, Statement,
+	                    .stat = DUP_T(Statement, Labeled, .l = $1)
+	                ),
+	                .next = NULL
+	            }
+	        );
+	    }
+	| labeled_statement_list labeled_statement_switch
+	    { $1->next = DUP((struct BlockList){ .item = DUP_T(BlockItem, Statement, .stat = DUP_T(Statement, Labeled, .l = $2)), .prev = $1, .next = NULL }); $$ = $1->next; }
+	;
+
 labeled_statement
 	: IDENTIFIER ':' statement
 	    { $$ = DUP_T(LabeledStatement, Label, .label_name = $1, .stat = $3); }
-	| CASE constant_expression ':' statement
-	    { $$ = DUP_T(LabeledStatement, Case, .case_expr = $2, .stat = $4); }
 	| DEFAULT ':' statement
 	    { $$ = DUP_T(LabeledStatement, Default_Label, .stat = $3); }
+	;
+
+labeled_statement_switch
+	: CASE constant_expression ':' statement
+	    { $$ = DUP_T(LabeledStatement, Case, .case_expr = $2, .stat = $4); }
+	| CASE constant_expression ':' statement FALL ';'
+	    { $$ = DUP_T(LabeledStatement, CaseFall, .case_expr = $2, .stat = $4); }
 	;
 
 compound_statement
@@ -654,14 +690,21 @@ selection_statement
 	    { $$ = DUP_T(SelectionStatement, IfElse, .if_else = { .decl = $3, .clause = $5, .action_true = $7, .action_false = $9 }); }
 	| IF '(' expression ')' statement ELSE statement
 	    { $$ = DUP_T(SelectionStatement, IfElse, .if_else = { .clause = $3, .action_true = $5, .action_false = $7 }); }
-	| SWITCH '(' declaration ')' statement
-	    { $$ = DUP_T(SelectionStatement, Switch, .switch_stat = { .decl = $3, .block = $5 }); }
-	| SWITCH '(' declaration ';' ')' statement
-	    { $$ = DUP_T(SelectionStatement, Switch, .switch_stat = { .decl = $3, .block = $6 }); }
-	| SWITCH '(' declaration ';' expression ')' statement
-	    { $$ = DUP_T(SelectionStatement, Switch, .switch_stat = { .decl = $3, .clause = $5, .block = $7 }); }
-	| SWITCH '(' expression ')' statement
-	    { $$ = DUP_T(SelectionStatement, Switch, .switch_stat = { .clause = $3, .block = $5 }); }
+	| SWITCH '(' declaration ')' '{' labeled_statement_list '}'
+	    { $$ =
+	        DUP_T(SelectionStatement, Switch,
+	            .switch_stat = {
+	                .decl = $3,
+	                .block = DUP_T(Statement, Block, .b = DUP((struct Block){ .contents = $6 }))
+	            }
+	        );
+	     }
+	| SWITCH '(' declaration ';' ')' '{' labeled_statement_list '}'
+	    { $$ = DUP_T(SelectionStatement, Switch, .switch_stat = { .decl = $3, .block = DUP_T(Statement, Block, .b = DUP((struct Block){ .contents = $7 })) }); }
+	| SWITCH '(' declaration ';' expression ')' '{' labeled_statement_list '}'
+	    { $$ = DUP_T(SelectionStatement, Switch, .switch_stat = { .decl = $3, .clause = $5, .block = DUP_T(Statement, Block, .b = DUP((struct Block){ .contents = $8 })) }); }
+	| SWITCH '(' expression ')' '{' labeled_statement_list '}'
+	    { $$ = DUP_T(SelectionStatement, Switch, .switch_stat = { .clause = $3, .block = DUP_T(Statement, Block, .b = DUP((struct Block){ .contents = $6 })) }); }
 	;
 
 iteration_statement
