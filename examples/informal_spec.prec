@@ -22,6 +22,10 @@
 // if the expression is ommitted, then the LAST variable will be used as the clasue by itself
 // also works for ``switch'' statements
 
+// backport from C29: identical tagless structs are compatible with one another e.g. struct { int x; } and struct { int y; }
+
+// backport from C23: typeof operator (warning: it will be forwarded to the compiler if it can not be resolved because it involves C library-imported identifiers)
+
 // switch statement auto-inserts ``break;'' at the end of each case.
 // cases and default REQUIRE braces (you can omit them if it's only one statement), can use ``fall"" to stop the break auto-inserting:
 // switch (x) {

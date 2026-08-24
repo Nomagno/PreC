@@ -176,11 +176,19 @@ void tabs_custom(FILE *stream) {
 
 // main resource used: http://unixwiz.net/techtips/reading-cdecl.html
 
+// VALUE_IFNOT_TEST(X) only pastes T of no vara
+#define VALUE_IFNOT_TEST(...) __VA_ARGS__
+#define VALUE_IFNOT_TEST1(...)
+#define VALUE_IFNOT(COND, ...) VALUE_IFNOT_TEST ## COND ( __VA_ARGS__ )
+#define __VA_ALT__(__x, ...) VALUE_IFNOT(__VA_OPT__(1), __x) __VA_ARGS__
+
+
 // Returns type the expression reduces to if. If it's not inferrable (unknown symbols), returns NULL
 // this is used ONLY for constdata, the rest of the type inference is done by the C compiler.
 // Constdata is a PreC typesystem level feature, so we WILL be able to infer a specific struct/union/enum
 // type if and only if we have the type in the type table
-struct Type *t_expr(struct Expr *x);
+struct Type *t_expr(struct Expr *x, bool inline_when_possible);
+#define t_expr(_x, ...) t_expr(_x, __VA_ALT__(false, __VA_ARGS__))
 
 // a return value of 2 instead of 1 indicates that it's a void type, and must hence NOT be qualified
 bool isBaseType(enum TypeSort x) {
@@ -311,7 +319,7 @@ void dispatch_array(struct TypeBuffer *type_buffer, struct Expr *expression) {
         struct BufferList *saved_buffer = current_buffer;
         current_buffer = &(struct BufferList){ .stream = stream };
 
-        t_expr(expression);
+        t_expr(expression, true /*inline_when_possible*/);
 
         current_buffer = saved_buffer;
         fclose(stream);
@@ -524,6 +532,9 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
     }
     case Bool: p_t("_Bool"); break;
     case TypeofExpr: {
+        // TODO: figure out how to reduce these typeofs to the actual type on the compiler side, when possible
+        // The issue is ``typeof(some_function_pointer) x'' has to be translated with t_str_type(type, "x", ...), which doesn't play nice with the compiler architecture.
+        // The solution is probably to reduce all typeofs on the AST before doing the rest of the translation, as annoying as that is
         p_t("typeof(");
 
         struct BufferList *saved_buffer = current_buffer;
@@ -538,6 +549,9 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
         break;
     }
     case TypeofType: {
+        // TODO: figure out how to reduce these typeofs to the actual type on the compiler side, when possible
+        // The issue is ``typeof(some_abstract_declarator) x'' has to be translated with t_str_type(type, "x", ...), which doesn't play nice with the compiler architecture.
+        // The solution is probably to reduce all typeofs on the AST before doing the rest of the translation, as annoying as that is
         p_t("typeof(%s)", t_str_type(x->typeof_type, NULL, false));
         break;
     }
@@ -633,7 +647,7 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
 
                     current_buffer = &(struct BufferList){ .stream = type_buffer->stream };
 
-                    t_expr(node->val->val->expr);
+                    t_expr(node->val->val->expr, true /*inline_when_possible*/);
 
                     current_buffer = saved_buffer;
                 }
@@ -776,7 +790,7 @@ void t_block(struct Block *b, struct TypeParamList *param_list) {
 void t_initializer(struct Initializer *x, struct Type *t) {
     switch (x->tag) {
     case Expr:
-        t_expr(x->expr);
+        t_expr(x->expr, true /*inline_when_possible*/);
         break;
     case Data:
         p("{");
@@ -795,7 +809,7 @@ void t_initializer(struct Initializer *x, struct Type *t) {
                         break;
                     case Index:
                         p("[");
-                        t_expr(desig_node->desig->index->expr);
+                        t_expr(desig_node->desig->index->expr, true /*inline_when_possible*/);
                         p("]");
                         break;
                     }
@@ -866,12 +880,21 @@ void t_initializer(struct Initializer *x, struct Type *t) {
 
         // This will have been set to true by t_block()
         newline_just_printed = false;
+        t_expr(
+            DUP_T(Expr, Unary, .unOp = {
+                                    .tag=Ref,
+                                    .e=DUP_T(Expr, Identifier, 
+                                        .identifier = unique_temporary_identifier, .source_line = x->source_line)
+                                    },
+                               .source_line = x->source_line));
         p("(&%s)", unique_temporary_identifier);
         break;
     }
 }
 
-struct Type *t_expr(struct Expr *x) {
+#undef t_expr
+#define t_expr(_x, ...) t_expr(_x, __VA_ALT__(inline_when_possible, __VA_ARGS__))
+struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
     struct Type *t;
     struct Type *return_type = NULL;
     switch (x->tag) {
@@ -890,7 +913,7 @@ struct Type *t_expr(struct Expr *x) {
             break;
         case Ref:
             p("&");
-            t = t_expr(x->unOp.e);
+            t = t_expr(x->unOp.e, false /*inline_when_possible*/);
             return_type = DUP_T(Type, Reference,
                 .reference = t,
                 .source_line = (t != NULL) ? t->source_line : x->source_line
@@ -1285,6 +1308,8 @@ struct Type *t_expr(struct Expr *x) {
     }
     return return_type;
 }
+#undef t_expr
+#define t_expr(_x, ...) t_expr(_x, __VA_ALT__(false, __VA_ARGS__))
 
 bool is_const_expr(struct Expr *x) {
     if (x == NULL)
@@ -1775,7 +1800,7 @@ void t_statement(struct Statement *stat) {
 
             tabs();
             p("case ");
-            t_expr(stat->l->case_expr->expr);
+            t_expr(stat->l->case_expr->expr, true /*inline_when_possible*/);
             p(":");
             NEWLINE();
 
@@ -1793,7 +1818,7 @@ void t_statement(struct Statement *stat) {
 
             tabs();
             p("case ");
-            t_expr(stat->l->case_expr->expr);
+            t_expr(stat->l->case_expr->expr, true /*inline_when_possible*/);
             p(":");
             NEWLINE();
 
