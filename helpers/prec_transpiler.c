@@ -66,6 +66,26 @@ struct BufferList *buffer_list;
 
 struct BufferList *current_buffer;
 
+#define NEW_REFERENCE(_e, _source) DUP_T(Expr, Unary, .unOp = { .tag = Ref, .e = _e }, .source_line = _source)
+
+#define NEW_CAST(_e, _t, _source) DUP_T(Expr, Cast, .cast = { .type = _t, .e = _e }, .source_line = _source)
+
+#define NEW_INT(_x, _source) DUP_T(Expr, Int, .int_num = _x, .source_line = _source)
+
+#define NEW_IDENTIFIER(_id, _source) DUP_T(Expr, Identifier, .identifier = _id, .source_line = _source)
+
+#define GROUP(...) __VA_ARGS__
+
+#define QUALIFY(_t, _q, _source) DUP_T(Type, Qualifier, \
+    .qualifier = { \
+        .qualifiers = _q, \
+        .t = _t \
+    }, \
+    .source_line = _source \
+);
+
+
+
 #define REWIND_LIST(_name) do { while (_name->prev != NULL) { _name = _name->prev; } } while(0)
 
 #define DISCARD_QUALIFIERS(_type) do { if (_type && _type->tag == Qualifier) _type = _type->qualifier.t; } while(0)
@@ -363,6 +383,8 @@ void str_insert(char dest[], const char src[], size_t pos) {
     strncpy(dest, buf, strlen(buf));
 }
 
+#define LEFT_BUFFER_END type_buffer->left_buffer+type_buffer->left_buffer_pos
+
 // How it works: const will always be dispatched unless what is being dispatched is a mut
 // a mut cancels a nearby const
 void dispatch_qualifiers(struct TypeBuffer *type_buffer, enum TypeSort tag, bool is_const, bool is_restrict, bool is_volatile) {
@@ -387,7 +409,7 @@ void dispatch_qualifiers(struct TypeBuffer *type_buffer, enum TypeSort tag, bool
             // on purpose:
 
             //fprintf(stderr, "Compiler internal precondition violation: Don't know how to parse this internal type left buffer: %s.\n",
-            //    type_buffer->left_buffer+type_buffer->left_buffer_pos);
+            //    LEFT_BUFFER_END);
             //assert(false);
             return;
         }
@@ -395,37 +417,37 @@ void dispatch_qualifiers(struct TypeBuffer *type_buffer, enum TypeSort tag, bool
         // insert qualifiers
         if (is_const) {
             // If there's already a const, do nothing
-            size_t size = strlen(type_buffer->left_buffer+type_buffer->left_buffer_pos);
+            size_t size = strlen(LEFT_BUFFER_END);
 
             if (((int)type_buffer->left_buffer_pos+(int)size-(int)strlen("const")-1) >= 0
                 &&
-                strncmp(type_buffer->left_buffer+type_buffer->left_buffer_pos+size-strlen("const")-1,
+                strncmp(LEFT_BUFFER_END+size-strlen("const")-1,
                         "const",
                         strlen("const")) == 0)
             {
                 ;
             } else {
-                str_insert(type_buffer->left_buffer+type_buffer->left_buffer_pos, "const ", pos);
+                str_insert(LEFT_BUFFER_END, "const ", pos);
             }
 
         } else {
             // If there's a const, remove it
-            size_t size = strlen(type_buffer->left_buffer+type_buffer->left_buffer_pos);
+            size_t size = strlen(LEFT_BUFFER_END);
 
             if (((int)type_buffer->left_buffer_pos+(int)size-(int)strlen("const")-1) >= 0
                 &&
-                strncmp(type_buffer->left_buffer+type_buffer->left_buffer_pos+size-strlen("const")-1,
+                strncmp(LEFT_BUFFER_END+size-strlen("const")-1,
                         "const",
                         strlen("const")) == 0)
             {
-                memcpy(type_buffer->left_buffer+type_buffer->left_buffer_pos+size-strlen("const")-1, "               ", strlen("const"));
+                memcpy(LEFT_BUFFER_END+size-strlen("const")-1, "               ", strlen("const"));
             }
         }
 
         if (is_volatile)
-            str_insert(type_buffer->left_buffer+type_buffer->left_buffer_pos, "volatile ", pos);
+            str_insert(LEFT_BUFFER_END, "volatile ", pos);
         if (is_restrict)
-            str_insert(type_buffer->left_buffer+type_buffer->left_buffer_pos, "restrict ", pos);
+            str_insert(LEFT_BUFFER_END, "restrict ", pos);
     }
 }
 
@@ -595,13 +617,8 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
                         if (node->decl->type->tag == Qualifier) {
                             node->decl->type->qualifier.qualifiers |= Mut;
                         } else {
-                            node->decl->type = DUP_T(Type, Qualifier,
-                                .qualifier = {
-                                    .qualifiers = Mut,
-                                    .t = node->decl->type
-                                },
-                                .source_line = node->decl->type->source_line
-                            );
+                            node->decl->type =
+                                QUALIFY(node->decl->type, Mut, node->decl->type->source_line)
                         }
                         tabs_custom(type_buffer->stream);
                         p_t("%s", t_str_type(node->decl->type, var_node->decl->name, false));
@@ -612,6 +629,13 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
                         var_node = var_node->next;
                     }
                 } else {
+                    if (node->decl->type->tag == Struct || node->decl->type->tag == Union) {
+                        if (node->decl->type->struct_or_union_def.name == NULL) {
+                            fprintf(stderr, "%s:%d:%d: Compiler error: PreC compiles to C99, so anonymous structs/unions are not supported.\n",
+                                    FILENAME_GRACEFUL, node->decl->type->source_line, 1);
+                            exit(1);
+                        }
+                    }
                     tabs_custom(type_buffer->stream);
                     p_t("%s", t_str_type(node->decl->type, NULL, false));
                     p_t(";\n");
@@ -695,20 +719,20 @@ char *t_str_type(struct Type *x, char *identifier, bool fun_pointer_dereferenced
     if (fun_pointer_dereferenced) {
         // To dereference, just remove the innermost pointer, which must always exist for a function pointer
         assert(x->tag == FunPointer);
-        size_t size = strlen(type_buffer->left_buffer+type_buffer->left_buffer_pos);
+        size_t size = strlen(LEFT_BUFFER_END);
 
         assert(((int)type_buffer->left_buffer_pos+(int)size-(int)strlen("*const")-1) >= 0);
-        if (strncmp(type_buffer->left_buffer+type_buffer->left_buffer_pos+size-strlen("*const")-1,
+        if (strncmp(LEFT_BUFFER_END+size-strlen("*const")-1,
                     "*const",
                     strlen("*const")) != 0) {
             fprintf(stderr, "%s:%d:%d: Compiler error: Function must be dereferenced but can't.\n",
                     FILENAME_GRACEFUL, x->source_line, 1);
             exit(1);
         }
-        memcpy(type_buffer->left_buffer+type_buffer->left_buffer_pos+size-strlen("*const")-1, "               ", strlen("*const"));
+        memcpy(LEFT_BUFFER_END+size-strlen("*const")-1, "               ", strlen("*const"));
 
     }
-    p_t("%s", type_buffer->left_buffer+type_buffer->left_buffer_pos);
+    p_t("%s", LEFT_BUFFER_END);
     if (identifier != NULL) {
         p_t("%s", identifier);
     }
@@ -881,13 +905,11 @@ void t_initializer(struct Initializer *x, struct Type *t) {
         // This will have been set to true by t_block()
         newline_just_printed = false;
         t_expr(
-            DUP_T(Expr, Unary, .unOp = {
-                                    .tag=Ref,
-                                    .e=DUP_T(Expr, Identifier, 
-                                        .identifier = unique_temporary_identifier, .source_line = x->source_line)
-                                    },
-                               .source_line = x->source_line));
-        p("(&%s)", unique_temporary_identifier);
+            NEW_REFERENCE(
+                NEW_IDENTIFIER(unique_temporary_identifier, x->source_line),
+                x->source_line
+            )
+        );
         break;
     }
 }
@@ -914,6 +936,7 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
         case Ref:
             p("&");
             t = t_expr(x->unOp.e, false /*inline_when_possible*/);
+            
             return_type = DUP_T(Type, Reference,
                 .reference = t,
                 .source_line = (t != NULL) ? t->source_line : x->source_line
@@ -1145,42 +1168,35 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
 
                                 struct Type *inline_type = decls->decl->type;
                                 DISCARD_QUALIFIERS(inline_type);
-                                if (inline_type->tag == FunPointer || inline_type->tag == Reference || isBaseType(inline_type->tag)) {
+                                if (inline_when_possible &&
+                                    (   inline_type->tag == FunPointer
+                                     || inline_type->tag == Reference
+                                     || isBaseType(inline_type->tag))) {
                                     if (vars->decl->val == NULL) {
                                         constdata_inlined = true;
                                         constdata_inlined_value =
-                                            DUP_T(Expr, Cast,
-                                                .cast = {
-                                                    .type = inline_type,
-                                                    .e =
-                                                        DUP_T(Expr, Int,
-                                                            .int_num = 0
-                                                        )
-                                                },
-                                                .source_line = x->source_line
+                                            NEW_CAST(
+                                                NEW_INT(0, x->source_line),
+                                                inline_type,
+                                                x->source_line
                                             );
                                     } else if (vars->decl->val->tag == Expr) {
                                         constdata_inlined = true;
                                         constdata_inlined_value =
-                                            DUP_T(Expr, Cast,
-                                                .cast = {
-                                                    .type = inline_type,
-                                                    .e = vars->decl->val->expr
-                                                },
-                                                .source_line = x->source_line
+                                            NEW_CAST(
+                                                vars->decl->val->expr,
+                                                inline_type,
+                                                x->source_line
                                             );
                                     } else if (vars->decl->val->tag == Code) {
                                         constdata_inlined = true;
                                         constdata_inlined_value =
-                                            DUP_T(Expr, Unary,
-                                                .unOp = {
-                                                    .tag = Ref,
-                                                    .e = DUP_T(Expr, Identifier,
-                                                        .identifier = vars->decl->val->code_backchannel,
-                                                        .source_line = x->source_line
-                                                    )
-                                                },
-                                                .source_line = x->source_line
+                                            NEW_REFERENCE(
+                                                NEW_IDENTIFIER(
+                                                    vars->decl->val->code_backchannel,
+                                                    x->source_line
+                                                ),
+                                                x->source_line
                                             );
                                     } else {
                                         //fprintf(stderr, "Debug %c %s\n", vars->decl->val->tag, vars->decl->val->code_backchannel);
@@ -1280,16 +1296,15 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
 
         struct ArgumentExpressionList *curr = x->struct_access_deref.method_args;
         if (curr == NULL) {
-            p("(");
+            struct Expr *e = x->struct_access_deref.e;
             if (x->tag == StructMethod)
-                p("&");
-            t_expr(x->struct_access_deref.e);
-            p(")");
+                e = NEW_REFERENCE(e, x->source_line);
+            t_expr(e);
         } else {
-            p("(");
+            struct Expr *e = x->struct_access_deref.e;
             if (x->tag == StructMethod)
-                p("&");
-            t_expr(x->struct_access_deref.e);
+                e = NEW_REFERENCE(e, x->source_line);
+            t_expr(e);
             p(",");
 
             REWIND_LIST(curr);
@@ -1654,7 +1669,9 @@ void t_statement(struct Statement *stat) {
 
             if (stat->s->simple_if.decl != NULL) {
                 global_indent_level -= 1;
-                p("\n");
+                NEWLINE();
+                set_src(stat->s->source_line);
+
                 tabs();
                 p("}");
                 NEWLINE();
@@ -1664,7 +1681,9 @@ void t_statement(struct Statement *stat) {
             if (stat->s->if_else.decl != NULL) {
                 tabs();
                 p("{");
-                p("\n");
+                NEWLINE();
+                set_src(stat->s->source_line);
+
                 global_indent_level += 1;
                 t_declaration(stat->s->if_else.decl, false, false);
             }
@@ -1713,7 +1732,9 @@ void t_statement(struct Statement *stat) {
 
             if (stat->s->if_else.decl != NULL) {
                 global_indent_level -= 1;
-                p("\n");
+                NEWLINE();
+                set_src(stat->s->source_line);
+
                 tabs();
                 p("}");
                 NEWLINE();
@@ -1756,7 +1777,9 @@ void t_statement(struct Statement *stat) {
 
             if (stat->s->switch_stat.decl != NULL) {
                 global_indent_level -= 1;
-                p("\n");
+                NEWLINE();
+                set_src(stat->s->source_line);
+
                 tabs();
                 p("}");
                 NEWLINE();
