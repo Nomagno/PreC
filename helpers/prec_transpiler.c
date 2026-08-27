@@ -593,7 +593,7 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
             p_t("{\n");
             global_indent_level += 1;
 
-            struct ConstDeclarationList *node = x->struct_or_union_def.declarations;
+            struct DeclarationList *node = x->struct_or_union_def.declarations;
             REWIND_LIST(node);
             while (node != NULL) {
                 if (node->decl == NULL) {
@@ -601,7 +601,7 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
                     continue;
                 }
 
-                struct ConstVarList *var_node = node->decl->vars;
+                struct VarList *var_node = node->decl->vars;
                 if (var_node != NULL) {
                     REWIND_LIST(var_node);
                     while (var_node != NULL) {
@@ -1156,11 +1156,11 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
             if (t->struct_or_union_def.name != NULL) {
                 TypeTablePtr entry = fetch_type(type_table, t->struct_or_union_def.name);
                 if (entry != NULL) {
-                    struct ConstDeclarationList *decls = entry->constdata;
+                    struct DeclarationList *decls = entry->constdata;
                     if (decls != NULL)
                         REWIND_LIST(decls);
                     while (!is_constdata_access && decls != NULL) {
-                        struct ConstVarList *vars = decls->decl->vars;
+                        struct VarList *vars = decls->decl->vars;
                         REWIND_LIST(vars);
                         while (!is_constdata_access && vars != NULL) {
                             if (strcmp(vars->decl->name, x->struct_access_deref.member) == 0) {
@@ -1259,11 +1259,11 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
             if (t->struct_or_union_def.name != NULL) {
                 TypeTablePtr entry = fetch_type(type_table, t->struct_or_union_def.name);
                 if (entry != NULL) {
-                    struct ConstDeclarationList *decls = entry->constdata;
+                    struct DeclarationList *decls = entry->constdata;
                     if (decls != NULL)
                         REWIND_LIST(decls);
                     while (!is_constdata_access && decls != NULL) {
-                        struct ConstVarList *vars = decls->decl->vars;
+                        struct VarList *vars = decls->decl->vars;
                         REWIND_LIST(vars);
                         while (!is_constdata_access && vars != NULL) {
                             if (strcmp(vars->decl->name, x->struct_access_deref.member) == 0) {
@@ -1436,10 +1436,10 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
     struct Type *t = decl->type;
     DISCARD_QUALIFIERS(t);
     if (t->tag == Struct) {
-        struct ConstDeclarationList *node_regulardata = t->struct_or_union_def.const_data;
+        struct DeclarationList *node_regulardata = t->struct_or_union_def.const_data;
         if (node_regulardata)
             REWIND_LIST(node_regulardata);
-        struct ConstDeclarationList *node_constdata = t->struct_or_union_def.const_data;
+        struct DeclarationList *node_constdata = t->struct_or_union_def.const_data;
         if (node_constdata)
             REWIND_LIST(node_constdata);
         if (t->struct_or_union_def.name && node_regulardata) {
@@ -1465,7 +1465,7 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
 
                 while (node_constdata != NULL) {
                     //struct Type *constdata_curr_decl_type = node_constdata->decl->type;
-                    struct ConstVarList *vars_node = node_constdata->decl->vars;
+                    struct VarList *vars_node = node_constdata->decl->vars;
 
                     if (vars_node == NULL) {
                         node_constdata = node_constdata->next;

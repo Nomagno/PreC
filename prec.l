@@ -47,6 +47,7 @@ void comment(void);
 "sizeof"		{ count(); return(SIZEOF); }
 "typeof"		{ count(); return(TYPEOF); }
 "static"		{ count(); return(STATIC); }
+"type"		{ count(); return(TYPE); }
 "struct"		{ count(); return(STRUCT); }
 "constdata"		{ count(); return(CONSTDATA); }
 "switch"		{ count(); return(SWITCH); }

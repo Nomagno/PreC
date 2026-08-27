@@ -29,14 +29,11 @@
 
 %union {
     struct TopLevel *top_level;
+    struct TypeDefinition *type_definition;
     struct Declaration *declaration;
+    struct DeclarationList *declaration_list;
     struct VarList *var_list;
     struct VarDecl *var_decl;
-
-    struct ConstVarDecl *const_var_decl;
-    struct ConstVarList *const_var_list;
-    struct ConstDeclaration *const_declaration;
-    struct ConstDeclarationList *const_declaration_list;
 
     struct Expr *expression;
     struct ConstExpr *const_expression;
@@ -77,14 +74,11 @@
 %type <expression> primary_expression postfix_expression unary_expression cast_expression arithmetic_expression conditional_expression assignment_expression expression
 %type <const_expression> constant_expression
 
-%type <const_var_decl> const_id_decl
-%type <const_var_list> const_var_list
-%type <const_declaration> const_declaration
-%type <const_declaration_list> struct_declaration_list
-
 %type <var_decl> id_decl
 %type <var_list> var_list
+%type <type_definition> type_definition
 %type <declaration> declaration
+%type <declaration_list> struct_declaration_list
 
 %type <initializer> initializer compound_literal_initializer
 %type <initializer_list> initializer_list
@@ -108,8 +102,6 @@
 
 %type <storage_class> storage_class
 %type <type> type regular_type concrete_type base_type
-%type <type> enum_specifier
-%type <type> struct_or_union_specifier
 %type <qualifier> type_qualifier
 %type <type_param_list> parameter_type_list parameter_list
 %type <type_param> parameter_declaration
@@ -124,7 +116,7 @@
 %token <int_constant> INT_CONSTANT
 %token <identifier> IDENTIFIER
 %token <string_literal> STRING_LITERAL
-%token SIZEOF TYPEOF
+%token SIZEOF TYPEOF TYPE
 %token PTR_METHOD_OP METHOD_OP PTR_OP LEFT_OP RIGHT_OP LE_OP GE_OP EQ_OP NE_OP
 %token AND_OP OR_OP
 
@@ -220,7 +212,7 @@ unary_expression
 	    { $$ = UN_EXPR(Neg, $2); }
 	| '!' cast_expression
 	    { $$ = UN_EXPR(BoolNot, $2); }
-	| SIZEOF unary_expression
+	| SIZEOF '(' expression ')'
 	    { $$ = UN_EXPR(Sizeof, $2); }
 	| SIZEOF '<' type '>'
 	    { $$ = DUP_T(Expr, SizeofType, .sizeof_type = $3); }
@@ -301,42 +293,8 @@ expression
 	    { $$ = BIN_EXPR(Sequence, $1, $3) }
 	;
 
-
-const_declaration
-    : ';'
-        { $$ = NULL; }
-    | type ';'
-        { $$ = DUP((struct ConstDeclaration){ .type = $1, .vars = NULL}); }
-    | type const_var_list ';'
-        { $$ = DUP((struct ConstDeclaration){ .type = $1, .vars = $2}); }
-    | type const_var_list ',' ';'
-        { $$ = DUP((struct ConstDeclaration){ .type = $1, .vars = $2}); }
-    ;
-
-const_var_list
-    : const_id_decl
-        { $$ = DUP((struct ConstVarList){ .decl = $1, .next = NULL}); }
-    | const_var_list ',' const_id_decl
-        { $1->next = DUP((struct ConstVarList){ .decl = $3, .prev = $1, .next = NULL }); $$ = $1->next; }
-    ;
-
-const_id_decl
-    : IDENTIFIER
-        { $$ = DUP((struct ConstVarDecl){ .name = $1 }); }
-    | IDENTIFIER '=' initializer
-        { $$ = DUP((struct ConstVarDecl){ .name = $1, .val = $3}); }
-    ;
-
 declaration
-    : storage_class type
-        { $$ = DUP((struct Declaration) { .class = $1, .type = $2, .vars = NULL }); }
-    | storage_class type var_list
-        { $$ = DUP((struct Declaration) { .class = $1, .type = $2, .vars = $3 }); }
-    | storage_class type var_list ','
-        { $$ = DUP((struct Declaration) { .class = $1, .type = $2, .vars = $3 }); }
-    | type
-        { $$ = DUP((struct Declaration) { .class = None, .type = $1, .vars = NULL }); }
-    | type var_list
+    : type var_list
         { $$ = DUP((struct Declaration) { .class = None, .type = $1, .vars = $2 }); }
     | type var_list ','
         { $$ = DUP((struct Declaration) { .class = None, .type = $1, .vars = $2 }); }
@@ -502,10 +460,12 @@ base_type
 	    { $$ = DUP_T(Type, f32); }
     | F64
 	    { $$ = DUP_T(Type, f64); }
-    | struct_or_union_specifier
-	    { $$ = $1; }
-	| enum_specifier
-	    { $$ = $1; }
+    | STRUCT IDENTIFIER
+	    { $$ = DUP_T(Type, Struct, .tag_name = $2); }
+    | UNION  IDENTIFIER
+	    { $$ = DUP_T(Type, Union, .tag_name = $2); }
+    | ENUM   IDENTIFIER
+	    { $$ = DUP_T(Type, Enum, .tag_name = $2); }
 	;
 
 parameter_type_list
@@ -535,42 +495,19 @@ parameter_declaration
 	    { $$ = DUP((struct TypeParam) { .type = $1, .name = $2 }); }
 	;
 
-
-struct_or_union_specifier
-	: STRUCT IDENTIFIER '{' struct_declaration_list '}'
-        { $$ = DUP_T(Type, Struct, .struct_or_union_def = { .name = $2, .declarations = $4 }); }
-	| STRUCT IDENTIFIER '{' struct_declaration_list '}' CONSTDATA '{' struct_declaration_list '}'
-        { $$ = DUP_T(Type, Struct, .struct_or_union_def = { .name = $2, .declarations = $4, .const_data = $8 }); }
-	| STRUCT '{' struct_declaration_list '}'
-        { $$ = DUP_T(Type, Struct, .struct_or_union_def = { .name = NULL, .declarations = $3 }); }
-	| STRUCT IDENTIFIER
-        { $$ = DUP_T(Type, Struct, .struct_or_union_def = { .name = $2, .declarations = NULL }); }
-	| UNION IDENTIFIER '{' struct_declaration_list '}'
-        { $$ = DUP_T(Type, Union, .struct_or_union_def = { .name = $2, .declarations = $4 }); }
-	| UNION '{' struct_declaration_list '}'
-        { $$ = DUP_T(Type, Union, .struct_or_union_def = { .name = NULL, .declarations = $3 }); }
-	| UNION IDENTIFIER
-        { $$ = DUP_T(Type, Union, .struct_or_union_def = { .name = $2, .declarations = NULL }); }
-	;
+type_definition
+    : TYPE STRUCT IDENTIFIER '=' '{' struct_declaration_list '}'
+    | TYPE STRUCT IDENTIFIER '=' '{' struct_declaration_list '}' CONSTDATA '{' struct_declaration_list '}'
+    | TYPE UNION IDENTIFIER  '=' '{' struct_declaration_list '}'
+    | TYPE ENUM IDENTIFIER   '=' '{' enumerator_list '}'
+    | TYPE ENUM IDENTIFIER   '=' '{' enumerator_list ',' '}'
+    ;
 
 struct_declaration_list
-	: const_declaration
-	    { $$ = DUP((struct ConstDeclarationList){ .decl = $1, .next = NULL }); }
-	| struct_declaration_list const_declaration
-	    { $1->next = DUP((struct ConstDeclarationList){ .decl = $2, .prev = $1, .next = NULL }); $$ = $1->next; }
-	;
-
-enum_specifier
-	: ENUM '{' enumerator_list '}'
-        { $$ = DUP_T(Type, Enum, .enum_def = { .name = NULL, .values = $3}); }
-	| ENUM '{' enumerator_list ',' '}'
-        { $$ = DUP_T(Type, Enum, .enum_def = { .name = NULL, .values = $3}); }
-	| ENUM IDENTIFIER
-        { $$ = DUP_T(Type, Enum, .enum_def = { .name = $2, .values = NULL}); }
-	| ENUM IDENTIFIER '{' enumerator_list '}'
-        { $$ = DUP_T(Type, Enum, .enum_def = { .name = $2, .values = $4}); }
-	| ENUM IDENTIFIER '{' enumerator_list ',' '}'
-        { $$ = DUP_T(Type, Enum, .enum_def = { .name = $2, .values = $4}); }
+	: declaration
+	    { $$ = DUP((struct DeclarationList){ .decl = $1, .next = NULL }); }
+	| struct_declaration_list declaration
+	    { $1->next = DUP((struct DeclarationList){ .decl = $2, .prev = $1, .next = NULL }); $$ = $1->next; }
 	;
 
 enumerator_list
@@ -660,7 +597,9 @@ block_item_list
 	;
 
 block_item
-	: declaration ';'
+	: type_definition ';' 
+	| storage_class declaration ';'
+	| declaration ';'
 	    { $$ = DUP_T(BlockItem, Declaration, .decl = $1); }
 	| statement
 	    { $$ = DUP_T(BlockItem, Statement, .stat = $1); }
@@ -737,7 +676,9 @@ jump_statement
 	;
 
 translation_unit
-	: declaration ';'
+	: type_definition ';'
+	| storage_class declaration ';'
+	| declaration ';'
 	    { $$ = DUP_T(TopLevel, Decl, .decl = $1, .next = NULL); }
 	| C_INCLUDE STRING_LITERAL
 	    { $$ = DUP_T(TopLevel, CInclude, .c_include = $2, .next = NULL); }

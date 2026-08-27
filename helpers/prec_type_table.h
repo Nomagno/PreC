@@ -9,8 +9,8 @@ typedef struct TypeEntry *TypeTablePtr;
 struct TypeEntry {
     unsigned scope_level; // 0 for global
     char *name;
-    struct ConstDeclarationList *regulardata;
-    struct ConstDeclarationList *constdata;
+    struct DeclarationList *regulardata;
+    struct DeclarationList *constdata;
     struct TypeEntry *next;
 };
 
@@ -23,8 +23,8 @@ static TypeTablePtr new_type_table(void) {
 }
 
 static void insert_type(TypeTablePtr table, char *name,
-    struct ConstDeclarationList *regulardata,
-    struct ConstDeclarationList *constdata,
+    struct DeclarationList *regulardata,
+    struct DeclarationList *constdata,
     unsigned scope_level) {
     TypeTablePtr curr = table->next;
     table->next = new_type_table();

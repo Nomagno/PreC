@@ -202,7 +202,6 @@ enum TypeSort {
 };
 
 struct Block;
-struct ConstDeclarationList;
 struct EnumeratorList;
 struct TypeParamList;
 
@@ -233,16 +232,7 @@ struct Type {
             struct Type *t;
         } array;
 
-        struct {
-            char *name;
-            struct ConstDeclarationList *declarations;
-            struct ConstDeclarationList *const_data;
-        } struct_or_union_def;
-
-        struct {
-            char *name;
-            struct EnumeratorList *values;
-        } enum_def;
+        char *tag_name;
 
         char *c_type;
 
@@ -252,6 +242,28 @@ struct Type {
         } fun_pointer;
     };
     unsigned source_line;
+};
+
+enum TypeDefinitionSort {
+    NewStruct,
+    NewUnion,
+    NewEnum
+};
+
+struct TypeDefinition {
+    enum TypeDefinitionSort tag;
+    union {
+        struct {
+            char *name;
+            struct DeclarationList *declarations;
+            struct DeclarationList *const_data;
+        } struct_or_union_def;
+
+        struct {
+            char *name;
+            struct EnumeratorList *values;
+        } enum_def;
+    };
 };
 
 struct TypeParam {
@@ -285,32 +297,6 @@ struct ConstExpr {
     unsigned source_line;
 };
 
-struct ConstVarDecl {
-    char *name;
-    struct Initializer *val;
-    unsigned source_line;
-};
-
-struct ConstVarList {
-    struct ConstVarDecl *decl;
-    struct ConstVarList *prev;
-    struct ConstVarList *next;
-    unsigned source_line;
-};
-
-struct ConstDeclaration {
-    struct Type *type;
-    struct ConstVarList *vars;
-    unsigned source_line;
-};
-
-struct ConstDeclarationList {
-    struct ConstDeclaration *decl;
-    struct ConstDeclarationList *prev;
-    struct ConstDeclarationList *next;
-    unsigned source_line;
-};
-
 
 enum StorageClass {
     None='n',
@@ -335,6 +321,13 @@ struct Declaration {
     enum StorageClass class;
     struct Type *type;
     struct VarList *vars;
+    unsigned source_line;
+};
+
+struct DeclarationList {
+    struct Declaration *decl;
+    struct DeclarationList *prev;
+    struct DeclarationList *next;
     unsigned source_line;
 };
 
