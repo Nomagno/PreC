@@ -108,7 +108,7 @@
 %type <enum_list> enumerator_list
 %type <enum_val> enumerator
 
-%type <top_level> top_level translation_unit;
+%type <top_level> top_level_item top_level translation_unit;
 
 %type <string_literal> string_literal_list
 
@@ -213,7 +213,7 @@ unary_expression
 	| '!' cast_expression
 	    { $$ = UN_EXPR(BoolNot, $2); }
 	| SIZEOF '(' expression ')'
-	    { $$ = UN_EXPR(Sizeof, $2); }
+	    { $$ = UN_EXPR(Sizeof, $3); }
 	| SIZEOF '<' type '>'
 	    { $$ = DUP_T(Expr, SizeofType, .sizeof_type = $3); }
 	;
@@ -496,11 +496,20 @@ parameter_declaration
 	;
 
 type_definition
-    : TYPE STRUCT IDENTIFIER '=' '{' struct_declaration_list '}'
+    : TYPE STRUCT IDENTIFIER
+        { $$ = DUP_T(TypeDefinition, NewStruct, .struct_or_union_def = { .name = $3 }); }
+    | TYPE UNION IDENTIFIER
+        { $$ = DUP_T(TypeDefinition, NewUnion, .struct_or_union_def = { .name = $3 }); }
+    | TYPE STRUCT IDENTIFIER '=' '{' struct_declaration_list '}'
+        { $$ = DUP_T(TypeDefinition, NewStruct, .struct_or_union_def = { .name = $3, .declarations = $6 }); }
     | TYPE STRUCT IDENTIFIER '=' '{' struct_declaration_list '}' CONSTDATA '{' struct_declaration_list '}'
+        { $$ = DUP_T(TypeDefinition, NewStruct, .struct_or_union_def = { .name = $3, .declarations = $6, .const_data = $10  }); }
     | TYPE UNION IDENTIFIER  '=' '{' struct_declaration_list '}'
+        { $$ = DUP_T(TypeDefinition, NewUnion, .struct_or_union_def = { .name = $3, .declarations = $6 }); }
     | TYPE ENUM IDENTIFIER   '=' '{' enumerator_list '}'
+        { $$ = DUP_T(TypeDefinition, NewEnum, .enum_def = { .name = $3, .values = $6 }); }
     | TYPE ENUM IDENTIFIER   '=' '{' enumerator_list ',' '}'
+        { $$ = DUP_T(TypeDefinition, NewEnum, .enum_def = { .name = $3, .values = $6 }); }
     ;
 
 struct_declaration_list
@@ -598,7 +607,9 @@ block_item_list
 
 block_item
 	: type_definition ';' 
+	    { $$ = DUP_T(BlockItem, TypeDefinition, .tdef = $1); }
 	| storage_class declaration ';'
+	    { $$ = DUP_T(BlockItem, Declaration, .decl = $2); $$->decl->class = $1; }
 	| declaration ';'
 	    { $$ = DUP_T(BlockItem, Declaration, .decl = $1); }
 	| statement
@@ -675,17 +686,24 @@ jump_statement
 	    { $$ = DUP_T(JumpStatement, Return, .return_stat = { .expr = $2 }); }
 	;
 
-translation_unit
+top_level_item
 	: type_definition ';'
+	    { $$ = DUP_T(TopLevel, TDef, .tdef = $1, .next = NULL); }
+	| statement
+	    { $$ = DUP_T(TopLevel, Stat, .stat = $1, .next = NULL); }
 	| storage_class declaration ';'
+	    { $$ = DUP_T(TopLevel, Decl, .decl = $2, .next = NULL); $$->decl->class = $1; }
 	| declaration ';'
 	    { $$ = DUP_T(TopLevel, Decl, .decl = $1, .next = NULL); }
 	| C_INCLUDE STRING_LITERAL
 	    { $$ = DUP_T(TopLevel, CInclude, .c_include = $2, .next = NULL); }
-	| translation_unit declaration ';'
-	    { $1->next = DUP_T(TopLevel, Decl, .decl = $2, .prev = $1, .next = NULL); $$ = $1->next; }
-	| translation_unit C_INCLUDE STRING_LITERAL
-	    { $1->next = DUP_T(TopLevel, CInclude, .c_include = $3, .prev = $1, .next = NULL); $$ = $1->next; }
+    ;
+
+translation_unit
+	: top_level_item
+	    { $$ = $1; }
+	| translation_unit top_level_item ';'
+	    { $1->next = $2; $$ = $1->next; }
 	;
 
 top_level

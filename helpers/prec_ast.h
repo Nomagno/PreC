@@ -264,6 +264,7 @@ struct TypeDefinition {
             struct EnumeratorList *values;
         } enum_def;
     };
+    unsigned source_line;
 };
 
 struct TypeParam {
@@ -344,8 +345,9 @@ struct BlockList {
 };
 
 struct BlockItem {
-    enum { Statement='s', Declaration='d' } tag;
+    enum { Statement='s', Declaration='d', TypeDefinition='t' } tag;
     union {
+        struct TypeDefinition *tdef;
         struct Statement *stat;
         struct Declaration *decl;
     };
@@ -443,8 +445,10 @@ struct IterationStatement {
 
 // Top level node
 struct TopLevel {
-    enum {CInclude='c', Decl='d'} tag;
+    enum {CInclude='c', TDef='t', Stat='s', Decl='d'} tag;
     union {
+        struct TypeDefinition *tdef;
+        struct Statement *stat;
         struct Declaration *decl;
         char *c_include;
     };
