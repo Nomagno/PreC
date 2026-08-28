@@ -699,7 +699,7 @@ translation_unit
 	: top_level_item
 	    { $$ = $1; }
 	| translation_unit top_level_item
-	    { $1->next = $2; $$ = $1->next; }
+	    { $1->next = $2; $$ = $1->next; $$->prev = $1; }
 	;
 
 top_level
