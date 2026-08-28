@@ -585,108 +585,12 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
             p_t("union ");
         }
 
-        if (x->struct_or_union_def.name != NULL) {
-            p_t("%s ", x->struct_or_union_def.name);
-        }
+        p_t("%s ", x->tag_name);
 
-        if (x->struct_or_union_def.declarations != NULL) {
-            p_t("{\n");
-            global_indent_level += 1;
-
-            struct DeclarationList *node = x->struct_or_union_def.declarations;
-            REWIND_LIST(node);
-            while (node != NULL) {
-                if (node->decl == NULL) {
-                    node = node->next;
-                    continue;
-                }
-
-                struct VarList *var_node = node->decl->vars;
-                if (var_node != NULL) {
-                    REWIND_LIST(var_node);
-                    while (var_node != NULL) {
-                        struct BufferList *saved_buffer = current_buffer;
-
-                        current_buffer = &(struct BufferList){ .stream = type_buffer->stream };
-
-                        // Struct/union members are always implicitly mut.
-                        // This is because the behaviour of const members in C structs is crazy:
-                        //    local variables with a type that contains a struct that has ANY const member
-                        //    can NEVER be reassigned easily.
-                        // So, we just don't allow this behaviour.
-                        if (node->decl->type->tag == Qualifier) {
-                            node->decl->type->qualifier.qualifiers |= Mut;
-                        } else {
-                            node->decl->type =
-                                QUALIFY(node->decl->type, Mut, node->decl->type->source_line)
-                        }
-                        tabs_custom(type_buffer->stream);
-                        p_t("%s", t_str_type(node->decl->type, var_node->decl->name, false));
-                        p_t(";\n");
-
-                        current_buffer = saved_buffer;
-                        
-                        var_node = var_node->next;
-                    }
-                } else {
-                    if (node->decl->type->tag == Struct || node->decl->type->tag == Union) {
-                        if (node->decl->type->struct_or_union_def.name == NULL) {
-                            fprintf(stderr, "%s:%d:%d: Compiler error: PreC compiles to C99, so anonymous structs/unions are not supported.\n",
-                                    FILENAME_GRACEFUL, node->decl->type->source_line, 1);
-                            exit(1);
-                        }
-                    }
-                    tabs_custom(type_buffer->stream);
-                    p_t("%s", t_str_type(node->decl->type, NULL, false));
-                    p_t(";\n");
-                }
-
-                node = node->next;
-            }
-
-            global_indent_level -= 1;
-
-            tabs_custom(type_buffer->stream);
-            p_t("}");
-        }
         break;
     case Enum:
         p_t("enum ");
-        if (x->enum_def.name != NULL) {
-            p_t("%s ", x->enum_def.name);
-        }
-        if (x->enum_def.values != NULL) {
-            p_t("{\n");
-            global_indent_level += 1;
-
-            struct EnumeratorList *node = x->enum_def.values;
-            REWIND_LIST(node);
-            while (node != NULL) {
-                tabs_custom(type_buffer->stream);
-                p_t("%s", node->val->name);
-                if (node->val->val != NULL) {
-                    p_t("=");
-
-                    struct BufferList *saved_buffer = current_buffer;
-
-                    current_buffer = &(struct BufferList){ .stream = type_buffer->stream };
-
-                    t_expr(node->val->val->expr, true /*inline_when_possible*/);
-
-                    current_buffer = saved_buffer;
-                }
-                if (node->next != NULL)
-                    p_t(",");
-                node = node->next;
-
-                p_t("\n");
-            }
-
-            global_indent_level -= 1;
-
-            tabs_custom(type_buffer->stream);
-            p_t("}");
-        }
+        p_t("%s ", x->tag_name);
         break;
     }
     if (isBaseType(x->tag)) {
@@ -748,6 +652,7 @@ char *t_str_type(struct Type *x, char *identifier, bool fun_pointer_dereferenced
 /*freeform: no newlines and no indents*/
 void t_declaration(struct Declaration *decl, bool freeform, bool top_level);
 void t_statement(struct Statement *stat);
+void t_typedefinition(struct TypeDefinition *tdef, bool top_level);
 
 void t_block(struct Block *b, struct TypeParamList *param_list) {
     if (b == NULL) {
@@ -779,6 +684,15 @@ void t_block(struct Block *b, struct TypeParamList *param_list) {
     REWIND_LIST(node);
     while (node != NULL) {
         switch(node->item->tag) {
+        case TypeDefinition:
+            set_src(node->item->tdef->source_line);
+            t_typedefinition(node->item->tdef, false /*top_level*/);
+
+
+            // purely cosmetic newline
+            set_src(node->item->decl->source_line);
+            NEWLINE();
+            break;
         case Declaration:
             set_src(node->item->decl->source_line);
             t_declaration(node->item->decl, false, false /*top_level*/);
@@ -792,6 +706,7 @@ void t_block(struct Block *b, struct TypeParamList *param_list) {
             set_src(node->item->stat->source_line);
              t_statement(node->item->stat);
             //NEWLINE();
+            break;
         }
         node = node->next;
     }
@@ -1153,8 +1068,8 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
         struct Expr *constdata_inlined_value = NULL;
 
         if (t && t->tag == Struct) {
-            if (t->struct_or_union_def.name != NULL) {
-                TypeTablePtr entry = fetch_type(type_table, t->struct_or_union_def.name);
+            if (t->tag_name != NULL) {
+                TypeTablePtr entry = fetch_type(type_table, t->tag_name);
                 if (entry != NULL) {
                     struct DeclarationList *decls = entry->constdata;
                     if (decls != NULL)
@@ -1208,7 +1123,7 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
 
                                 if (!constdata_inlined) {
                                     p("_prec_internal_constdata_struct_%s_%s",
-                                        t->struct_or_union_def.name, x->struct_access_deref.member);
+                                        t->tag_name, x->struct_access_deref.member);
                                 }
                             }
                             vars = vars->next;
@@ -1256,8 +1171,8 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
         bool is_constdata_access = false;
 
         if (t && t->tag == Struct) {
-            if (t->struct_or_union_def.name != NULL) {
-                TypeTablePtr entry = fetch_type(type_table, t->struct_or_union_def.name);
+            if (t->tag_name != NULL) {
+                TypeTablePtr entry = fetch_type(type_table, t->tag_name);
                 if (entry != NULL) {
                     struct DeclarationList *decls = entry->constdata;
                     if (decls != NULL)
@@ -1270,7 +1185,7 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
                                 is_constdata_access = true;
                                 dry_run = saved_dr;
                                 p("_prec_internal_constdata_struct_%s_%s",
-                                    t->struct_or_union_def.name, x->struct_access_deref.member);
+                                    t->tag_name, x->struct_access_deref.member);
                             }
                             vars = vars->next;
                         }
@@ -1411,49 +1326,124 @@ bool is_const_sized_type(struct Type *x) {
     }
 }
 
-/*freeform: no newlines and no indents*/
-void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
-    if (!freeform)
-        set_src(decl->source_line);
+void t_typedefinition(struct TypeDefinition *tdef, bool top_level) {
+    switch(tdef->tag) {
+    case NewStruct:
+    case NewUnion:
+        if (tdef->tag == NewStruct) {
+            p("struct ");
+        } else if (tdef->tag == NewUnion) {
+            p("union ");
+        }
 
-    char *storage_class;
-    switch (decl->class) {
-    case None:
-        storage_class = "";
+
+        p("%s ", tdef->struct_or_union_def.name);
+
+        /*TRANSLATE STRUCT/UNION BLOCK*/
+        if (tdef->struct_or_union_def.declarations != NULL) {
+            p("{");
+            NEWLINE();
+            global_indent_level += 1;
+
+            /*Structs and unions can be forward declared:*/
+
+            struct DeclarationList *node = tdef->struct_or_union_def.declarations;
+            REWIND_LIST(node);
+            while (node != NULL) {
+                if (node->decl == NULL) {
+                    node = node->next;
+                    continue;
+                }
+
+                struct VarList *var_node = node->decl->vars;
+                REWIND_LIST(var_node);
+                while (var_node != NULL) {
+                    set_src(var_node->source_line);
+
+                    // Struct/union members are always implicitly mut.
+                    // This is because the behaviour of const members in C structs is crazy:
+                    //    local variables with a type that contains a struct that has ANY const member
+                    //    can NEVER be reassigned easily.
+                    // So, we just don't allow this behaviour.
+                    if (node->decl->type->tag == Qualifier) {
+                        node->decl->type->qualifier.qualifiers |= Mut;
+                    } else {
+                        node->decl->type =
+                            QUALIFY(node->decl->type, Mut, node->decl->type->source_line)
+                    }
+                    tabs();
+                    p("%s", t_str_type(node->decl->type, var_node->decl->name, false));
+                    p(";");
+                    NEWLINE();
+                    
+                    var_node = var_node->next;
+                }
+
+
+                node = node->next;
+            }
+
+            global_indent_level -= 1;
+
+            tabs();
+            p("}");
+        }
         break;
-    case Static:
-        storage_class = "static ";
-        break;
-    case Extern:
-        storage_class = "extern ";
+    case NewEnum:
+        p("enum %s ", tdef->enum_def.name);
+
+        /*TRANSLATE ENUM BLOCK*/
+        if (tdef->enum_def.values != NULL) {
+            p("{");
+            NEWLINE()
+            global_indent_level += 1;
+
+            struct EnumeratorList *node = tdef->enum_def.values;
+            REWIND_LIST(node);
+            while (node != NULL) {
+                set_src(node->val->source_line);
+                tabs();
+                p("%s", node->val->name);
+                if (node->val->val != NULL) {
+                    p("=");
+                    t_expr(node->val->val->expr, true /*inline_when_possible*/);
+                }
+                if (node->next != NULL)
+                    p(",");
+                node = node->next;
+
+                NEWLINE();
+            }
+
+            global_indent_level -= 1;
+
+            set_src(tdef->source_line);
+            tabs();
+            p("}");
+        }
         break;
     }
 
-    if (decl->vars == NULL) {
-        p("%s%s;", storage_class, t_str_type(decl->type, NULL, false));
-    }
 
-    struct Type *t = decl->type;
-    DISCARD_QUALIFIERS(t);
-    if (t->tag == Struct) {
-        struct DeclarationList *node_regulardata = t->struct_or_union_def.const_data;
+    if (tdef->tag == NewStruct) {
+        struct DeclarationList *node_regulardata = tdef->struct_or_union_def.const_data;
         if (node_regulardata)
             REWIND_LIST(node_regulardata);
-        struct DeclarationList *node_constdata = t->struct_or_union_def.const_data;
+        struct DeclarationList *node_constdata = tdef->struct_or_union_def.const_data;
         if (node_constdata)
             REWIND_LIST(node_constdata);
-        if (t->struct_or_union_def.name && node_regulardata) {
+        if (tdef->struct_or_union_def.name && node_regulardata) {
             // TODO: make sure we cull types every time we exit a scope,
             // for now we just insert, this won't fail to compile any
             // valid programs at least
-            insert_type(type_table, t->struct_or_union_def.name,
+            insert_type(type_table, tdef->struct_or_union_def.name,
                         node_regulardata, node_constdata,
                         global_indent_level);
             // Currently, constdata not supported for structs
             // declared along with variables in the same decl,
             // mostly because it's annoying to implement
 
-            if (decl->vars == NULL && node_constdata != NULL) {
+            if (node_constdata != NULL) {
                 // Create a _prec_internal_constdata_struct_ ## structname _ ## fieldname
                 //    const global variable declaration
                 //    for each field,
@@ -1480,23 +1470,23 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
                             DUP((struct Declaration){
                                 .class = Static,
                                 .type = node_constdata->decl->type,
-                                .source_line = t->struct_or_union_def.const_data->source_line
+                                .source_line = tdef->struct_or_union_def.const_data->source_line
                             });
                         DISCARD_QUALIFIERS(constdata_field_decl->type);
 
                         char *full_name;
                         // add one var
                         asprintf(&full_name, "_prec_internal_constdata_struct_%s_%s",
-                            t->struct_or_union_def.name, vars_node->decl->name);
+                            tdef->struct_or_union_def.name, vars_node->decl->name);
                         constdata_field_decl->vars = DUP((struct VarList){
                             .decl = DUP((struct VarDecl) {
                                 .name = full_name,
                                 .val = vars_node->decl->val,
-                                .source_line = t->struct_or_union_def.const_data->source_line
+                                .source_line = tdef->struct_or_union_def.const_data->source_line
                             }),
                             .prev = NULL,
                             .next = NULL,
-                            .source_line = t->struct_or_union_def.const_data->source_line
+                            .source_line = tdef->struct_or_union_def.const_data->source_line
                         });
 
                         // to translate code like this,
@@ -1542,18 +1532,33 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
                 }
 
                 NEWLINE();
-            } else if (decl->vars != NULL && node_constdata != NULL) {
-                // TODO: error out PROPERLY with a 'compiler limitation'
-                // error as per the above comment
-                fprintf(stderr, "%s:%d:%d: Compiler limitation: can't have constdata in a struct declared as part of a variable declaration\n",
-                        FILENAME_GRACEFUL, decl->vars->source_line, 1);
             }
         }
     }
 
-    if (decl->vars == NULL) {
-        return;
+    p(";");
+}
+
+/*freeform: no newlines and no indents*/
+void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
+    if (!freeform)
+        set_src(decl->source_line);
+
+    char *storage_class;
+    switch (decl->class) {
+    case None:
+        storage_class = "";
+        break;
+    case Static:
+        storage_class = "static ";
+        break;
+    case Extern:
+        storage_class = "extern ";
+        break;
     }
+
+    assert(decl->vars != NULL);
+
 
     struct VarList *node = decl->vars;
     REWIND_LIST(node);
@@ -1643,16 +1648,10 @@ void t_statement(struct Statement *stat) {
             p("if (")
             if (stat->s->simple_if.clause != NULL) {
                 t_expr(stat->s->simple_if.clause);
-            } else if (stat->s->simple_if.decl != NULL
-                       && stat->s->simple_if.decl->vars != NULL
-                       && stat->s->simple_if.decl->vars->decl != NULL
-                       && stat->s->simple_if.decl->vars->decl->name != NULL) {
+            } else if (stat->s->simple_if.decl != NULL) {
                 // If there's several variables in the declaration, this will always take the last
                 // as the clause
                 p("%s", stat->s->simple_if.decl->vars->decl->name);
-            } else {
-                fprintf(stderr, "%s:%d:%d: Compiler Error: BAD! Declaration conditional clause with no variables e.g. if(i32) ...\n",
-                        FILENAME_GRACEFUL, stat->s->source_line, 1);
             }
             p(")");
             NEWLINE();
@@ -1692,16 +1691,10 @@ void t_statement(struct Statement *stat) {
             p("if (")
             if (stat->s->if_else.clause != NULL) {
                 t_expr(stat->s->if_else.clause);
-            } else if (stat->s->if_else.decl != NULL
-                       && stat->s->if_else.decl->vars != NULL
-                       && stat->s->if_else.decl->vars->decl != NULL
-                       && stat->s->if_else.decl->vars->decl->name != NULL) {
+            } else if (stat->s->if_else.decl != NULL) {
                 // If there's several variables in the declaration, this will always take the last
                 // as the clause
                 p("%s", stat->s->if_else.decl->vars->decl->name);
-            } else {
-                fprintf(stderr, "%s:%d:%d: Compiler Error: BAD! Declaration conditional clause with no variables e.g. if(i32) ...\n",
-                        FILENAME_GRACEFUL, stat->s->source_line, 1);
             }
             p(")");
             NEWLINE();
@@ -1754,16 +1747,10 @@ void t_statement(struct Statement *stat) {
             p("switch (")
             if (stat->s->switch_stat.clause != NULL) {
                 t_expr(stat->s->switch_stat.clause);
-            } else if (stat->s->switch_stat.decl != NULL
-                       && stat->s->switch_stat.decl->vars != NULL
-                       && stat->s->switch_stat.decl->vars->decl != NULL
-                       && stat->s->switch_stat.decl->vars->decl->name != NULL) {
+            } else if (stat->s->switch_stat.decl != NULL) {
                 // If there's several variables in the declaration, this will always take the last
                 // as the clause
                 p("%s", stat->s->switch_stat.decl->vars->decl->name);
-            } else {
-                fprintf(stderr, "%s:%d:%d: Compiler Error: BAD! Declaration conditional clause with no variables e.g. switch(i32) ...\n",
-                        FILENAME_GRACEFUL, stat->s->source_line, 1);
             }
             p(")");
             NEWLINE();
@@ -1973,6 +1960,40 @@ void transpile(struct TopLevel *top) {
             printf("\n");
             newline_just_printed = true;
             break;
+        case Stat:
+            buffer_list = NULL;
+            current_buffer = NULL;
+            global_indent_level = 0;
+
+            buffer_list = create_buffer();
+            current_buffer = buffer_list;
+
+            set_src(top_level_list->stat->source_line);
+            t_statement(top_level_list->stat);
+            print_buffer_list(buffer_list);
+            destroy_buffer_list(buffer_list);
+
+            buffer_list = NULL;
+            current_buffer = NULL;
+            global_indent_level = 0;
+            break;        
+        case TDef:
+            buffer_list = NULL;
+            current_buffer = NULL;
+            global_indent_level = 0;
+
+            buffer_list = create_buffer();
+            current_buffer = buffer_list;
+
+            set_src(top_level_list->tdef->source_line);
+            t_typedefinition(top_level_list->tdef, true /*top_level*/);
+            print_buffer_list(buffer_list);
+            destroy_buffer_list(buffer_list);
+
+            buffer_list = NULL;
+            current_buffer = NULL;
+            global_indent_level = 0;
+            break;        
         case Decl:
             buffer_list = NULL;
             current_buffer = NULL;
