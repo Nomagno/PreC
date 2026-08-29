@@ -16,7 +16,7 @@ extern void (&)(u8 mut & dest, Cell& src, u32 len)
 
 #define CodeType (enum codetype)
 //32 bits
-enum codetype {
+type enum codetype = {
     t_unknown_label=0,
     t_nop=1,
     t_primitive=2,
@@ -33,7 +33,7 @@ enum codetype {
 };
 
 #define Ctx (struct ctx)
-struct ctx {
+type struct ctx = {
     Cell dstack_ptr;
     Cell fstack_ptr;
     Cell flags_ptr;
@@ -65,7 +65,7 @@ struct ctx {
 
 #define forthFunc (void (&)(Ctx mut &))
 #define PrimitiveData (struct primitivedata)
-struct primitivedata {
+type struct primitivedata = {
     forthFunc func;
     bool priority;
     bool forbid_tco;

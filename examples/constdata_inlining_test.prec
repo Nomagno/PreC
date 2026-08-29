@@ -1,0 +1,22 @@
+type struct B = {
+    i32 a;
+};
+
+type struct A = {
+    struct B x;
+} constdata {
+    i32 y = 5;
+};
+
+#define A <struct A>{0}
+
+i32 & x = &A.y;
+
+i32 (&)(void) main = ${
+    switch(5) {
+        case 1:
+            return 0;
+        case A.y:
+            return 3;
+    }
+};

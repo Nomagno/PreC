@@ -122,6 +122,8 @@ void destroy_buffer_list(struct BufferList *list) {
 
 bool dry_run = false;
 
+unsigned previous_source_line = 0;
+
 // Indicates the source line, if 0 then there's no source line.
 // Set by every call to p_src.
 // Consumed by every call to p that follows a newline.
@@ -141,7 +143,7 @@ extern const char *filename;
             if (source_line == 0) { \
                 fprintf(stderr, "Warning: no source line for: \""); \
                 fprintf(stderr, __VA_ARGS__); \
-                fprintf(stderr, "\"\n"); \
+                fprintf(stderr, "\" last known line: %d\n", previous_source_line); \
                 newline_just_printed = 0; \
             } else { \
                 if (pretty_filename != NULL)\
@@ -165,7 +167,7 @@ extern const char *filename;
     p(__VA_ARGS__); \
 }
 
-#define set_src(_source_line) source_line = _source_line;
+#define set_src(_source_line) { previous_source_line = source_line; source_line = _source_line; }
 
 #define NEWLINE() { p("\n"); newline_just_printed = true; }
 
@@ -1027,6 +1029,9 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
     case Int:
         p("%lu", x->int_num);
         break;
+    case UInt:
+        p("%luU", x->uint_num);
+        break;
     case Ternary:
         t_expr(x->ternary.cond);
         p("?");
@@ -1072,10 +1077,12 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
                 TypeTablePtr entry = fetch_type(type_table, t->tag_name);
                 if (entry != NULL) {
                     struct DeclarationList *decls = entry->constdata;
+
                     if (decls != NULL)
                         REWIND_LIST(decls);
                     while (!is_constdata_access && decls != NULL) {
                         struct VarList *vars = decls->decl->vars;
+
                         REWIND_LIST(vars);
                         while (!is_constdata_access && vars != NULL) {
                             if (strcmp(vars->decl->name, x->struct_access_deref.member) == 0) {
@@ -1114,17 +1121,12 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
                                                 x->source_line
                                             );
                                     } else {
-                                        //fprintf(stderr, "Debug %c %s\n", vars->decl->val->tag, vars->decl->val->code_backchannel);
-                                        //exit(1);
+                                        // fprintf(stderr, "Debug %c %s\n", vars->decl->val->tag, vars->decl->val->code_backchannel);
+                                        // exit(1);
                                     }
 
                                 }
                                 dry_run = saved_dr;
-
-                                if (!constdata_inlined) {
-                                    p("_prec_internal_constdata_struct_%s_%s",
-                                        t->tag_name, x->struct_access_deref.member);
-                                }
                             }
                             vars = vars->next;
                         }
@@ -1135,10 +1137,15 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
         }
         dry_run = saved_dr;
 
-        if (constdata_inlined || is_constdata_access) {
+        if (is_constdata_access && constdata_inlined) {
             p("(");
             t_expr(constdata_inlined_value);
             p(")");
+        } else if (is_constdata_access && !constdata_inlined) {
+            if (!constdata_inlined) {
+                p("_prec_internal_constdata_struct_%s_%s",
+                    t->tag_name, x->struct_access_deref.member);
+            }
         } else {
             t = t_expr(x->struct_access_deref.e);
 
@@ -1214,11 +1221,14 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
             struct Expr *e = x->struct_access_deref.e;
             if (x->tag == StructMethod)
                 e = NEW_REFERENCE(e, x->source_line);
+            p("(");
             t_expr(e);
+            p(")");
         } else {
             struct Expr *e = x->struct_access_deref.e;
             if (x->tag == StructMethod)
                 e = NEW_REFERENCE(e, x->source_line);
+            p("(");
             t_expr(e);
             p(",");
 
@@ -1262,6 +1272,8 @@ bool is_const_expr(struct Expr *x) {
     case Float:
         return true;
     case Int:
+        return true;
+    case UInt:
         return true;
     case Ternary:
         return is_const_expr(x->ternary.cond)
@@ -1385,6 +1397,7 @@ void t_typedefinition(struct TypeDefinition *tdef, bool top_level) {
 
             global_indent_level -= 1;
 
+            set_src(tdef->source_line);
             tabs();
             p("}");
         }
@@ -1530,19 +1543,17 @@ void t_typedefinition(struct TypeDefinition *tdef, bool top_level) {
                     }
                     node_constdata = node_constdata->next;
                 }
-
-                NEWLINE();
             }
         }
     }
 
+    set_src(tdef->source_line);
     p(";");
 }
 
 /*freeform: no newlines and no indents*/
 void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
-    if (!freeform)
-        set_src(decl->source_line);
+    set_src(decl->source_line);
 
     char *storage_class;
     switch (decl->class) {
@@ -1567,6 +1578,7 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
         if (!freeform) {
             tabs();
         }
+        set_src(node->decl->source_line);
         if (node->decl->val != NULL) {
             // top level functions with no qualifiers and a function initializer get implicitly converted to declarations/definitions
             if (top_level && decl->type->tag == FunPointer && node->decl->val->tag == Code) {
@@ -1577,10 +1589,13 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
 
                 // Empty marker on symbol stack
                 push_symbol(sym_table, NULL, NULL, true /*is_global*/);
+
+                set_src(node->decl->val->source_line);
                 t_block(node->decl->val->code, decl->type->fun_pointer.param_list);
             } else {
                 p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, false));
                 p(" = ");
+                set_src(node->decl->val->source_line);
                 t_initializer(node->decl->val, decl->type);
 
                 // TODO: make sure to cull symbols every time a scope is exited,
@@ -1708,6 +1723,7 @@ void t_statement(struct Statement *stat) {
                 global_indent_level -= 1;
             }
 
+            set_src(stat->s->if_else.action_false->source_line);
             tabs();
             p("else");
             NEWLINE();

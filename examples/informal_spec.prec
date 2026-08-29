@@ -6,7 +6,6 @@
 // - full list of primitive types: bool, u8, i8, u16, i16, u32, i32, u64, i64, f32, f64
 // - NO type coercion at all, must explicitly cast
 // - constness by default, ``mut'' to mutate
-// - struct autoderreference: no need to do a->x, just do a.x
 // - all values are zero-initialized by default
 // - type casts and all syntactically similar operations now use angular brackets:
 //    - type casts <type>expression
@@ -22,7 +21,16 @@
 // if the expression is ommitted, then the LAST variable will be used as the clasue by itself
 // also works for ``switch'' statements
 
-// backport from C29: identical tagless structs are compatible with one another e.g. struct { int x; } and struct { int y; }
+
+// Somewhat of a backport from C29:
+// TODO: anonymous structurally typed structs that are translated to a tag struct that is lazily defined:
+// - tuple(i32 x, i32 y)
+// - tuple_anon(i32, i32) [equivalent to: tuple(i32 _1, i32 _2)]
+// TODO: A set best-effort typeof-style passes:
+// - typeof(...) [forward to C compiler if can't determine]
+// - tupleof<some_struct_type> [error if can't determine]
+// - tupleof_anon<some_struct_type>
+// - First the typeof pass, then the other two passes
 
 // backport from C23: typeof operator (warning: it will be forwarded to the compiler if it can not be resolved because it involves C library-imported identifiers)
 
@@ -36,9 +44,11 @@
 //    code;
 //  }
 
-// - no typedef:
-//      struct vector { i32 x, y; };
+// - no typedef, explicit type definition syntax:
+//      type struct vector = { i32 x, y; };
 //      MUST be referred to as ``struct vector''
+// - Declarations can NOT be empty now
+// - The only storage classes are none, static and extern. Storage classes can only appear in declarations at the top level and in blocks.
 // - for type aliases, use macros #define Vector struct vector
 // - Parentheses allowed in type names in a lot more places, no erroring out stupidly
 // - Types go all before the variable name: int& [5] a;
@@ -50,12 +60,13 @@
 //    Suffice to say, if val is a non-reentrant expression you asked for trouble, don't blame me xD
 
 // - Structure constdata, example:
-//     struct A { i32 x; } constdata { i32 my_constant = 99; };
+//     type struct A = { i32 x; } constdata { i32 my_constant = 99; };
 //     struct A myA = { .x = 5 };
 //     myA.x; //evaluates to 5
 //     myA.my_constant; //evaluates to 99
-// constdata variables are actually file-scope global constants that are accessed like a member of the struct.
+// constdata variables are actually constants that are accessed like a member of the struct and have the same scope as the type.
 // in conjunction with method call operators, you can achieve comfy statically dispatched methods
+// TODO: make constdata functions that take local types work (requires completing the above tupleof and typeof TODO)
 
 // - operators are now overloading-free:
 //      | -> BOR

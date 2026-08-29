@@ -69,6 +69,7 @@
     char *string_literal;
     double float_constant;
     uintmax_t int_constant;
+    uintmax_t uint_constant;
 }
 
 %type <expression> primary_expression postfix_expression unary_expression cast_expression arithmetic_expression conditional_expression assignment_expression expression
@@ -114,6 +115,7 @@
 
 %token <float_constant> FLOAT_CONSTANT
 %token <int_constant> INT_CONSTANT
+%token <uint_constant> UINT_CONSTANT
 %token <identifier> IDENTIFIER
 %token <string_literal> STRING_LITERAL
 %token SIZEOF TYPEOF TYPE
@@ -150,6 +152,8 @@ primary_expression
 	    { $$ = DUP_T(Expr, Identifier, .identifier = $1); }
 	| INT_CONSTANT
 	    { $$ = DUP_T(Expr, Int, .int_num = $1); }
+	| UINT_CONSTANT
+	    { $$ = DUP_T(Expr, UInt, .uint_num = $1); }
 	| FLOAT_CONSTANT
 	    { $$ = DUP_T(Expr, Float, .fp_num = $1); }
 	| string_literal_list
@@ -513,6 +517,8 @@ struct_declaration_list
 	    { $$ = DUP((struct DeclarationList){ .decl = $1, .next = NULL }); }
 	| struct_declaration_list declaration ';'
 	    { $1->next = DUP((struct DeclarationList){ .decl = $2, .prev = $1, .next = NULL }); $$ = $1->next; }
+	| struct_declaration_list ';'
+	    { $$ = $1; }
 	;
 
 enumerator_list

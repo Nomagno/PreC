@@ -65,6 +65,7 @@ enum ExprType {
     Ternary='c',
     Float='f',
     Int='d',
+    UInt='D',
     Constant='c',
     Cast='<',
     CompoundLiteral='l',
@@ -124,6 +125,7 @@ struct Expr {
         char *identifier;
         double fp_num;
         uintmax_t int_num;
+        uintmax_t uint_num;
     };
     unsigned source_line;
 };

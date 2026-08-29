@@ -14,8 +14,15 @@ i32 (&)(void) main = ${
     mut struct MyDataType data = { 9 };
     struct MyDataType mut & datptr = &data;
 
+    switch(5) {
+        case data->y:
+            return 4;
+    }
+
     printf("%d\n", datptr->x); // 9
     printf("%d\n", datptr->y); // 5
     datptr->.add(7); // method access
     printf("%d\n", datptr->x); // 21
 };
+
+static i32 a, b;
