@@ -23,9 +23,8 @@
 
 
 // Somewhat of a backport from C29:
-// TODO: anonymous structurally typed structs that are translated to a tag struct that is lazily defined:
 // - tuple(i32 x, i32 y)
-// - tuple_anon(i32, i32) [equivalent to: tuple(i32 _1, i32 _2)]
+// - tuple(i32, i32) [equivalent to: tuple(i32 _1, i32 _2)]
 // TODO: A set best-effort typeof-style passes:
 // - typeof(...) [forward to C compiler if can't determine]
 // - tupleof<some_struct_type> [error if can't determine]

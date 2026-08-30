@@ -1,0 +1,18 @@
+c_include "stdio.h"
+
+#define Vec2(_t) tuple(_t x, _t y)
+
+#define Adder(_t) _t (&)(_t a, _t b)
+
+#define Vi Vec2(i32)
+
+#define newVi(x, y) <Vi>{x, y}
+
+Adder(Vi) Add_Vi = ${
+    return newVi(a.x+b.x, a.y+b.y);
+};
+
+i32 (&)(void) main = ${
+    Vi added = Add_Vi(newVi(4, 6), newVi(10, 11));
+    printf("(%d,%d)\n", added.x, added.y);
+};

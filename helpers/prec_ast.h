@@ -184,6 +184,7 @@ enum TypeSort {
     TypeofExpr='t',
     TypeofType='T',
     Struct='s',
+    Tuple=C('t','u'),
     Union='u',
     Enum='e',
     CType=C('c','t'),
@@ -242,6 +243,10 @@ struct Type {
             struct Type *return_type;
             struct TypeParamList *param_list;
         } fun_pointer;
+
+        struct {
+            struct TypeParamList *member_list;
+        } tuple;
     };
     unsigned source_line;
 };

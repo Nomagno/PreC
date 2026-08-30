@@ -118,7 +118,7 @@
 %token <uint_constant> UINT_CONSTANT
 %token <identifier> IDENTIFIER
 %token <string_literal> STRING_LITERAL
-%token SIZEOF TYPEOF TYPE
+%token SIZEOF TYPEOF TYPE TUPLE
 %token PTR_METHOD_OP METHOD_OP PTR_OP LEFT_OP RIGHT_OP LE_OP GE_OP EQ_OP NE_OP
 %token AND_OP OR_OP
 
@@ -423,6 +423,8 @@ concrete_type
         { $$ = DUP_T(Type, Array, .array = { .size = $3, .t = $1}); }
     | regular_type '(' '&' ')' '(' parameter_type_list ')'
         { $$ = DUP_T(Type, FunPointer, .fun_pointer = { .return_type = $1, .param_list = $6}); }
+    | TUPLE '(' parameter_type_list ')'
+        { $$ = DUP_T(Type, Tuple, .tuple = { .member_list = $3 }); }
     ;
 
 

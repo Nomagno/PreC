@@ -45,6 +45,7 @@ void comment(void);
 "restrict"		{ count(); return(RESTRICT); }
 "return"		{ count(); return(RETURN); }
 "sizeof"		{ count(); return(SIZEOF); }
+"tuple"		{ count(); return(TUPLE); }
 "typeof"		{ count(); return(TYPEOF); }
 "static"		{ count(); return(STATIC); }
 "type"		{ count(); return(TYPE); }

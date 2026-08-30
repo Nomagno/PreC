@@ -217,6 +217,7 @@ bool isBaseType(enum TypeSort x) {
     return x == TypeofExpr
         || x == TypeofType
         || x == Struct
+        || x == Tuple
         || x == Union
         || x == Enum
         || x == CType
@@ -453,6 +454,238 @@ void dispatch_qualifiers(struct TypeBuffer *type_buffer, enum TypeSort tag, bool
     }
 }
 
+char *type_id(struct Type *x) {
+    switch(x->tag) {
+        case TypeofType:
+        case TypeofExpr:
+            assert(!"Typeof not supported for tuples for now");
+        case Tuple: {
+            char *retval = NULL;
+            //  translate each of the parameters, also applying this as needed:
+                // "Like struct members, tuple members must always be implicitly mut"
+            struct TypeParamList *node = x->tuple.member_list;
+            REWIND_LIST(node);
+            unsigned counter = 0;
+            asprintf(&retval, "__prec_internal_tuple_");
+
+            while (node != NULL) {
+                assert(node->param != NULL);
+
+                char *member_name = node->param->name;
+                if (member_name == NULL) {
+                    // Unnamed tuple members get the name _0 if in first position, _1 if in second, etc.
+                    asprintf(&member_name, "ANON%d", counter);
+                }
+
+                if (node->param->type->tag == Qualifier) {
+                    node->param->type->qualifier.qualifiers |= Mut;
+                } else {
+                    node->param->type =
+                        QUALIFY(node->param->type, Mut, node->param->type->source_line);
+                }
+
+                asprintf(&retval, "%s_%s_%s", retval, type_id(node->param->type), member_name);
+
+                if (node->param->type)
+                node = node->next;
+                counter += 1;
+            }
+
+            asprintf(&retval, "%s__", retval);
+
+            return retval;
+        }
+        case FunPointer: {
+            char *retval = NULL;
+            // translate each of the parameters
+            asprintf(&retval, "__funptr_");
+            asprintf(&retval, "%s_%s", retval, type_id(x->fun_pointer.return_type));
+
+            struct TypeParamList *node = x->fun_pointer.param_list;
+            REWIND_LIST(node);
+
+            while (node != NULL) {
+                if (node->param == NULL) {
+                    asprintf(&retval, "%s_PREC_ELLIPSIS", retval);
+                    break;
+                }
+
+                char *member_name = node->param->name;
+                if (member_name == NULL) {
+                    asprintf(&retval, "%s_%s", retval, type_id(node->param->type));
+                } else {
+                    asprintf(&retval, "%s_%s_%s", retval, type_id(node->param->type), member_name);
+                }
+
+                if (node->param->type)
+                node = node->next;
+            }
+
+            asprintf(&retval, "%s__", retval);
+
+            return retval;
+        }
+        case Qualifier: {
+            char *retval = "";
+            if (x->qualifier.qualifiers & Mut) {
+                asprintf(&retval, "%smut", retval);
+            }
+            if (x->qualifier.qualifiers & Volatile) {
+                asprintf(&retval, "%svolatile", retval);
+            }
+            if (x->qualifier.qualifiers & Restrict) {
+                asprintf(&retval, "%srestrict", retval);
+            }
+
+            char *translated = type_id(x->qualifier.t);
+            asprintf(&retval, "%s_%s", retval, translated);
+            free(translated);
+            return retval;
+        }
+        case Reference: {
+            char *retval = NULL;
+            char *translated = type_id(x->reference);
+            asprintf(&retval, "ref_%s", translated);
+            free(translated);
+            return retval;
+        }
+        case CType: {
+            char *retval = NULL;
+            asprintf(&retval, "external_%s", x->c_type);
+            return retval;
+        }
+        case Struct: {
+            char *retval = NULL;
+            asprintf(&retval, "struct_%s", x->tag_name);
+            return retval;
+        }
+        case Union: {
+            char *retval = NULL;
+            asprintf(&retval, "union_%s", x->tag_name);
+            return retval;
+        }
+        case Enum: {
+            char *retval = NULL;
+            asprintf(&retval, "enum_%s", x->tag_name);
+            return retval;
+        }
+        case Array: {
+            char *retval = NULL;
+            struct Expr *size = x->array.size->expr;
+            unsigned array_size = 0;
+            while (size->tag == Cast){
+                size = size->cast.e;
+                if (size->tag == UInt) {
+                    array_size = size->uint_num;
+                } else if (size->tag == Int) {
+                    array_size = size->int_num;
+                } else {
+                    assert(!"Complex array size expressions not supported yet in tuple type signatures");
+                }
+            }
+            assert(array_size != 0);
+
+            char *translated = type_id(x->array.t);
+            asprintf(&retval, "array_%d_%s", array_size, translated);
+            free(translated);
+            return retval;
+        }
+        case u8:   return strdup("u8");
+        case i8:   return strdup("i8");
+        case u16:  return strdup("u16");
+        case i16:  return strdup("i16");
+        case u32:  return strdup("u32");
+        case i32:  return strdup("i32");
+        case u64:  return strdup("u64");
+        case i64:  return strdup("i64");
+        case f32:  return strdup("f32");
+        case f64:  return strdup("f64");
+        case uptr: return strdup("uptr");
+        case iptr: return strdup("iptr");
+        case Void: return strdup("void");
+        case Bool: return strdup("bool");
+    }
+}
+
+char *global_tuple_array[1024];
+
+char *register_tuple_if_needed(struct Type *x) {
+    assert(x != NULL);
+
+    char *type_identifier = type_id(x);
+
+    int last_free_index = -1;
+    bool registered = false;
+    for (unsigned i = 0; i < 1024; i++) {
+        if (global_tuple_array[i] == NULL) {
+            last_free_index = i;
+            continue;
+        }
+
+        if (strcmp(global_tuple_array[i], type_identifier) == 0) {
+            registered = true;
+            break;
+        }
+    }
+    if (!registered) {
+        global_tuple_array[last_free_index] = type_identifier;
+        // Tuples are lazily created:
+        // The first time it's encountered, it is registered as a struct and defined.
+        // The name is unique and given by the type_id() function.
+        // This gives the effect of all possible tuples appearing to be defined: structural typing.
+        
+        // We create a new buffer to print the type to,
+        // print the code to it, then restore the current buffer.
+        int saved_indent = global_indent_level;
+        global_indent_level = 0;
+
+        struct BufferList *saved_buffer = current_buffer;
+        struct BufferList *tmp = buffer_list;
+
+        buffer_list = create_buffer();
+        buffer_list->next = tmp;
+        current_buffer = buffer_list;
+
+        set_src(x->source_line);
+        p("struct %s {", type_identifier);
+        NEWLINE();
+
+        global_indent_level += 1;
+
+        struct TypeParamList *node = x->tuple.member_list;
+        REWIND_LIST(node);
+        unsigned counter = 0;
+        while (node != NULL) {
+            assert(node->param != NULL);
+            set_src(node->param->source_line);
+
+            char *member_name = node->param->name;
+            if (member_name == NULL) {
+                // Unnamed tuple members get the name _0 if in first position, _1 if in second, etc.
+                asprintf(&member_name, "_%d", counter);
+            }
+
+            tabs();
+            p("%s;", t_str_type(node->param->type, member_name, false));
+            NEWLINE();
+
+            if (node->param->type)
+            node = node->next;
+            counter += 1;
+        }
+        set_src(x->source_line);
+
+        global_indent_level -= 1;
+        p("};");
+        //NEWLINE();
+
+        current_buffer = saved_buffer;
+        global_indent_level = saved_indent;
+    }
+
+    return type_identifier;
+}
+
 void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
     switch (x->tag) {
     // Compound types: qualifiers, references, function pointers, arrays
@@ -589,6 +822,10 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
 
         p_t("%s ", x->tag_name);
 
+        break;
+    case Tuple:
+        char *type_identifier = register_tuple_if_needed(x);
+        p_t("struct %s ", type_identifier);
         break;
     case Enum:
         p_t("enum ");
@@ -1329,6 +1566,7 @@ bool is_const_sized_type(struct Type *x) {
     case Bool:
     case Union:
     case Struct:
+    case Tuple:
     case Enum:
         return true;
     case TypeofExpr:
@@ -1387,7 +1625,7 @@ void t_typedefinition(struct TypeDefinition *tdef, bool top_level) {
                     p("%s", t_str_type(node->decl->type, var_node->decl->name, false));
                     p(";");
                     NEWLINE();
-                    
+
                     var_node = var_node->next;
                 }
 
@@ -1960,6 +2198,12 @@ void t_statement(struct Statement *stat) {
     }
 }
 
+#define RESET_TRANSLATION_DATA() buffer_list = NULL; current_buffer = NULL; global_indent_level = 0; buffer_list = create_buffer(); current_buffer = buffer_list;
+
+#define CLEAR_TRANSLATION_DATA() buffer_list = NULL; current_buffer = NULL; global_indent_level = 0;
+
+
+
 void transpile(struct TopLevel *top) {
     printf("#include \"stdint.h\"\n");
     if (pretty_filename != NULL)
@@ -1977,55 +2221,34 @@ void transpile(struct TopLevel *top) {
             newline_just_printed = true;
             break;
         case Stat:
-            buffer_list = NULL;
-            current_buffer = NULL;
-            global_indent_level = 0;
-
-            buffer_list = create_buffer();
-            current_buffer = buffer_list;
+            RESET_TRANSLATION_DATA();
 
             set_src(top_level_list->stat->source_line);
             t_statement(top_level_list->stat);
             print_buffer_list(buffer_list);
             destroy_buffer_list(buffer_list);
 
-            buffer_list = NULL;
-            current_buffer = NULL;
-            global_indent_level = 0;
-            break;        
+            CLEAR_TRANSLATION_DATA();
+            break;
         case TDef:
-            buffer_list = NULL;
-            current_buffer = NULL;
-            global_indent_level = 0;
-
-            buffer_list = create_buffer();
-            current_buffer = buffer_list;
+            RESET_TRANSLATION_DATA();
 
             set_src(top_level_list->tdef->source_line);
             t_typedefinition(top_level_list->tdef, true /*top_level*/);
             print_buffer_list(buffer_list);
             destroy_buffer_list(buffer_list);
 
-            buffer_list = NULL;
-            current_buffer = NULL;
-            global_indent_level = 0;
-            break;        
+            CLEAR_TRANSLATION_DATA();
+            break;
         case Decl:
-            buffer_list = NULL;
-            current_buffer = NULL;
-            global_indent_level = 0;
-
-            buffer_list = create_buffer();
-            current_buffer = buffer_list;
+            RESET_TRANSLATION_DATA();
 
             set_src(top_level_list->decl->source_line);
             t_declaration(top_level_list->decl, false, true /*top_level*/);
             print_buffer_list(buffer_list);
             destroy_buffer_list(buffer_list);
 
-            buffer_list = NULL;
-            current_buffer = NULL;
-            global_indent_level = 0;
+            CLEAR_TRANSLATION_DATA();
             break;
         }
         top_level_list = top_level_list->next;
