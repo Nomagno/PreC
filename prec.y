@@ -370,9 +370,9 @@ designator
 
 storage_class
     : EXTERN
-        { $$ = Static; }
-    | STATIC
         { $$ = Extern; }
+    | STATIC
+        { $$ = Static; }
     ;
 
 type

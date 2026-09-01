@@ -1494,22 +1494,56 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
             p("%s", x->struct_access_deref.member);
         }
 
+        static unsigned exponential_method_evaluation = 0;
+
         struct ArgumentExpressionList *curr = x->struct_access_deref.method_args;
         p("(");
         struct Expr *e = x->struct_access_deref.e;
         if (!is_pointer) {
             if (e->tag != Identifier) {
-                // Wrapper struct to be able to take reference to an rvalue
-                p("&(struct { %s; }){", t_str_type(original_type, "x", false ));
-                t_expr(e);
-                p("}.x");
+                if (exponential_method_evaluation >= 2) {
+                    fprintf(stderr, "%s:%d:%d: Compiler error: Fatal: Please don't call so many methods on rvalues (non-variables) at once. Use intermediate variables.\n",
+                            FILENAME_GRACEFUL, e->source_line, 1);
+                    exit(1);
+                }
+                
+                if (!is_constdata_access && !dry_run) {
+                    fprintf(stderr, "%s:%d:%d: Compiler warning: CAREFUL! (level %d) The message receiver will be evaluated twice. Use an intermediate variable to avoid.\n",
+                            FILENAME_GRACEFUL, e->source_line, 1, exponential_method_evaluation);
+                    exponential_method_evaluation += 1;
+                }
+                if (original_type != NULL) {
+                    // Wrapper struct to be able to take reference to an rvalue
+                    p("&(struct { %s; }){", t_str_type(original_type, "x", false ));
+                    t_expr(e);
+                    p("}.x");
+                } else {
+                    p("&(");
+                    t_expr(e);
+                    p(")");
+                }
             } else {
                 p("&(");
                 t_expr(e);
                 p(")");
             }
         } else {
+            if (e->tag != Identifier) {
+                if (exponential_method_evaluation >= 2) {
+                    fprintf(stderr, "%s:%d:%d: Compiler error: Fatal: Please don't call so many methods on rvalues (non-variables) at once. Use intermediate variables.\n",
+                            FILENAME_GRACEFUL, e->source_line, 1);
+                    exit(1);
+                }
+                if (!is_constdata_access && !dry_run) {
+                    fprintf(stderr, "%s:%d:%d: Compiler warning: CAREFUL! (level %d) The message receiver will be evaluated twice. Use an intermediate variable to avoid.\n",
+                            FILENAME_GRACEFUL, e->source_line, 1, exponential_method_evaluation);
+                    exponential_method_evaluation += 1;
+                }
+            }
             t_expr(e);
+        }
+        if (!dry_run && exponential_method_evaluation > 0) {
+            exponential_method_evaluation -= 1;
         }
 
         if (curr != NULL) {

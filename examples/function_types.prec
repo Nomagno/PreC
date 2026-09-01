@@ -1,5 +1,6 @@
 c_include "stdio.h"
 //Some tests for complex types and struct auto-dereference
+// Prints "n,20" for all values of n from 0 to 19
 
 type struct A = {
     i32 x;
@@ -17,11 +18,16 @@ i32 (&)(void) (&)(void) getmain = ${
 };
 
 i32 (&)(void) main = ${
+    static mut u32 counter = 0;
+
     struct A mut var = {6};
 
     var..add(6)..add(8);
 
-    printf("%d\n", var.x);
+    printf("%d,%d\n", counter, var.x);
 
-    getmain()();
+    counter = counter + 1;
+
+    if (counter < 20)
+        getmain()();
 };
