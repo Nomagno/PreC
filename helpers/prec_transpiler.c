@@ -688,6 +688,8 @@ char *register_tuple_if_needed(struct Type *x) {
     return type_identifier;
 }
 
+void dispatch_constdata(char *type_name, struct DeclarationList *data, bool top_level);
+
 void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
     switch (x->tag) {
     // Compound types: qualifiers, references, function pointers, arrays
@@ -827,6 +829,8 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
         break;
     case Tuple:
         char *type_identifier = register_tuple_if_needed(x);
+        if (x->tuple.const_data != NULL)
+            dispatch_constdata(type_id(x), x->tuple.const_data, true /*top_level*/);
         p_t("struct %s ", type_identifier);
         break;
     case Enum:
@@ -1658,6 +1662,100 @@ bool is_const_sized_type(struct Type *x) {
     }
 }
 
+void dispatch_constdata(char *type_name, struct DeclarationList *data, bool top_level) {
+    // Create a _prec_internal_constdata_struct_ ## structname _ ## fieldname
+    //    const global variable declaration
+    //    for each field,
+    //    that contains the constdata field, then
+    //    set it to be initialized to the proper data.
+    // Add the helper annotations for function-valued literals.
+
+    TypeTablePtr entry = fetch_type(type_table, type_name);
+    if (entry != NULL) {
+        
+    }
+
+    struct TopLevel *head_of_inserted_constdata_fields = NULL;
+
+    while (data != NULL) {
+        //struct Type *constdata_curr_decl_type = data->decl->type;
+        struct VarList *vars_node = data->decl->vars;
+
+        if (vars_node == NULL) {
+            data = data->next;
+            continue;
+        }
+
+        REWIND_LIST(vars_node);
+        while (vars_node != NULL) {
+
+            // build the top-level declaration
+            struct Declaration *constdata_field_decl =
+                DUP((struct Declaration){
+                    .class = Static,
+                    .type = data->decl->type,
+                    .source_line = data->source_line
+                });
+            DISCARD_QUALIFIERS(constdata_field_decl->type);
+
+            char *full_name;
+            // add one var
+            asprintf(&full_name, "_prec_internal_constdata_struct_%s_%s",
+                type_name, vars_node->decl->name);
+            constdata_field_decl->vars = DUP((struct VarList){
+                .decl = DUP((struct VarDecl) {
+                    .name = full_name,
+                    .val = vars_node->decl->val,
+                    .source_line = data->source_line
+                }),
+                .prev = NULL,
+                .next = NULL,
+                .source_line = data->source_line
+            });
+
+            // to translate code like this,
+            // the code must be able to access the type we're
+            // dealing with in the first place,
+            // else the ergonomics make no sense.
+            // so the symbol for this must be inserted AFTER the type.
+            // this must only be done in the case of top-level types.
+            // to achieve this, we will translate the declaration AFTER the current declaration,
+            // by inserting it for top_level or translating directly.
+            // TODO: As of C23, this can be achieved for non-top-level types as well
+            //       Because of the rules that allow for limited structural typing.
+            //       Maybe make a branch of the PreC transpiler that targets C23 in the future?
+
+            if (top_level) {
+                if (head_of_inserted_constdata_fields == NULL) {
+                    struct TopLevel *saved_next = top_level_list->next;
+                    top_level_list->next = DUP_T(TopLevel, Decl,
+                        .decl = constdata_field_decl,
+                        .prev = top_level_list,
+                        .source_line = constdata_field_decl->source_line
+                    );
+                    top_level_list->next->next = saved_next;
+                    head_of_inserted_constdata_fields = top_level_list->next;
+                } else {
+                    struct TopLevel *saved_next = head_of_inserted_constdata_fields->next;
+                    head_of_inserted_constdata_fields->next = DUP_T(TopLevel, Decl,
+                        .decl = constdata_field_decl,
+                        .prev = top_level_list,
+                        .source_line = constdata_field_decl->source_line
+                    );
+                    head_of_inserted_constdata_fields->next->next = saved_next;
+                    head_of_inserted_constdata_fields = head_of_inserted_constdata_fields->next;
+                }
+            } else {
+                t_declaration(constdata_field_decl, false /*freeform*/, false /*top_level*/);
+            }
+
+
+            vars_node = vars_node->next;
+        }
+        data = data->next;
+    }
+}
+
 void t_typedefinition(struct TypeDefinition *tdef, bool top_level) {
     switch(tdef->tag) {
     case NewStruct:
@@ -1770,99 +1868,14 @@ void t_typedefinition(struct TypeDefinition *tdef, bool top_level) {
             // for now we just insert, this won't fail to compile any
             // valid programs at least
             insert_type(type_table, tdef->struct_or_union_def.name,
-                        node_regulardata, node_constdata,
+                        node_regulardata, NULL,
                         global_indent_level);
             // Currently, constdata not supported for structs
             // declared along with variables in the same decl,
             // mostly because it's annoying to implement
 
             if (node_constdata != NULL) {
-                // Create a _prec_internal_constdata_struct_ ## structname _ ## fieldname
-                //    const global variable declaration
-                //    for each field,
-                //    that contains the constdata field, then
-                //    set it to be initialized to the proper data.
-                // Add the helper annotations for function-valued literals.
-
-                struct TopLevel *head_of_inserted_constdata_fields = NULL;
-
-                while (node_constdata != NULL) {
-                    //struct Type *constdata_curr_decl_type = node_constdata->decl->type;
-                    struct VarList *vars_node = node_constdata->decl->vars;
-
-                    if (vars_node == NULL) {
-                        node_constdata = node_constdata->next;
-                        continue;
-                    }
-
-                    REWIND_LIST(vars_node);
-                    while (vars_node != NULL) {
-
-                        // build the top-level declaration
-                        struct Declaration *constdata_field_decl =
-                            DUP((struct Declaration){
-                                .class = Static,
-                                .type = node_constdata->decl->type,
-                                .source_line = tdef->struct_or_union_def.const_data->source_line
-                            });
-                        DISCARD_QUALIFIERS(constdata_field_decl->type);
-
-                        char *full_name;
-                        // add one var
-                        asprintf(&full_name, "_prec_internal_constdata_struct_%s_%s",
-                            tdef->struct_or_union_def.name, vars_node->decl->name);
-                        constdata_field_decl->vars = DUP((struct VarList){
-                            .decl = DUP((struct VarDecl) {
-                                .name = full_name,
-                                .val = vars_node->decl->val,
-                                .source_line = tdef->struct_or_union_def.const_data->source_line
-                            }),
-                            .prev = NULL,
-                            .next = NULL,
-                            .source_line = tdef->struct_or_union_def.const_data->source_line
-                        });
-
-                        // to translate code like this,
-                        // the code must be able to access the type we're
-                        // dealing with in the first place,
-                        // else the ergonomics make no sense.
-                        // so the symbol for this must be inserted AFTER the type.
-                        // this must only be done in the case of top-level types.
-                        // to achieve this, we will translate the declaration AFTER the current declaration,
-                        // by inserting it for top_level or translating directly.
-                        // TODO: As of C23, this can be achieved for non-top-level types as well
-                        //       Because of the rules that allow for limited structural typing.
-                        //       Maybe make a branch of the PreC transpiler that targets C23 in the future?
-
-                        if (top_level) {
-                            if (head_of_inserted_constdata_fields == NULL) {
-                                struct TopLevel *saved_next = top_level_list->next;
-                                top_level_list->next = DUP_T(TopLevel, Decl,
-                                    .decl = constdata_field_decl,
-                                    .prev = top_level_list,
-                                    .source_line = constdata_field_decl->source_line
-                                );
-                                top_level_list->next->next = saved_next;
-                                head_of_inserted_constdata_fields = top_level_list->next;
-                            } else {
-                                struct TopLevel *saved_next = head_of_inserted_constdata_fields->next;
-                                head_of_inserted_constdata_fields->next = DUP_T(TopLevel, Decl,
-                                    .decl = constdata_field_decl,
-                                    .prev = top_level_list,
-                                    .source_line = constdata_field_decl->source_line
-                                );
-                                head_of_inserted_constdata_fields->next->next = saved_next;
-                                head_of_inserted_constdata_fields = head_of_inserted_constdata_fields->next;
-                            }
-                        } else {
-                            t_declaration(constdata_field_decl, false /*freeform*/, false /*top_level*/);
-                        }
-
-
-                        vars_node = vars_node->next;
-                    }
-                    node_constdata = node_constdata->next;
-                }
+                dispatch_constdata(tdef->struct_or_union_def.name, node_constdata, top_level);
             }
         }
     }

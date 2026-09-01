@@ -246,6 +246,7 @@ struct Type {
 
         struct {
             struct TypeParamList *member_list;
+            struct DeclarationList *const_data;
         } tuple;
     };
     unsigned source_line;
