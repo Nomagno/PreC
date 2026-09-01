@@ -738,9 +738,6 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
         }
         break;
     case FunPointer:
-        t_internal_type(x->fun_pointer.return_type, type_buffer);
-        dispatch_qualifiers(type_buffer, x->fun_pointer.return_type->tag, true, false, false);
-
         unsigned arg_i = 0;
         char *arg_list[65] = {0};
         struct TypeParamList *node = x->fun_pointer.param_list;
@@ -764,6 +761,9 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
 
         dispatch_pointer(type_buffer);
         dispatch_qualifiers(type_buffer, FunPointer, true, false, false);
+
+        t_internal_type(x->fun_pointer.return_type, type_buffer);
+        dispatch_qualifiers(type_buffer, x->fun_pointer.return_type->tag, true, false, false);
         break;
 
     // Base types

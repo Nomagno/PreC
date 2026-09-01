@@ -1,0 +1,27 @@
+c_include "stdio.h"
+//Some tests for complex types and struct auto-dereference
+
+type struct A = {
+    i32 x;
+} constdata {
+    struct A mut & (&)(struct A mut & self, i32 val) add = ${
+        self->x = self->x + val;
+        return self;
+    };
+};
+
+i32 (&)(void) main;
+
+i32 (&)(void) (&)(void) getmain = ${
+    return main;
+};
+
+i32 (&)(void) main = ${
+    struct A mut var = {6};
+
+    var..add(6)..add(8);
+
+    printf("%d\n", var.x);
+
+    getmain()();
+};
