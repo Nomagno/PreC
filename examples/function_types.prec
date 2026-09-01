@@ -1,9 +1,10 @@
 c_include "stdio.h"
 //Some tests for complex types and struct auto-dereference
-// Prints "n,20" for all values of n from 0 to 19
+// Prints "n,30" for all values of n from 0 to 19
 
 type struct A = {
     i32 x;
+    struct A mut & (&)(struct A mut & self, i32 val) add_dynamic;
 } constdata {
     struct A mut & (&)(struct A mut & self, i32 val) add = ${
         self->x = self->x + val;
@@ -21,8 +22,18 @@ i32 (&)(void) main = ${
     static mut u32 counter = 0;
 
     struct A mut var = {6};
+    var.add_dynamic = var.add;
 
-    var..add(6)..add(8);
+    struct A mut & varP = &var;
+
+    // Do *not* chain dynamically dispatched methods.
+    // It will throw a warning if you chain two, and an error if you chain three.
+    // This could be fixed through GNU statement expressions, but unfortunately PreC targets standard C99.
+    // Maybe add a transpiler command line flag to support it?
+    varP..add_dynamic(6);
+    varP..add_dynamic(8);
+
+    varP..add(10);
 
     printf("%d,%d\n", counter, var.x);
 

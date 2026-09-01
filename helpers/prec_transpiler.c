@@ -1424,6 +1424,9 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
 
         struct Type *original_type = t;
 
+        struct Type *original_type_unqualified = t;
+        DISCARD_QUALIFIERS(original_type_unqualified);
+
         DISCARD_QUALIFIERS(t);
 
         bool is_pointer = false;
@@ -1534,7 +1537,7 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
                             FILENAME_GRACEFUL, e->source_line, 1);
                     exit(1);
                 }
-                if (!is_constdata_access && !dry_run) {
+                if (!is_constdata_access && !(original_type_unqualified != NULL && original_type_unqualified->tag != Reference) && !dry_run) {
                     fprintf(stderr, "%s:%d:%d: Compiler warning: CAREFUL! (level %d) The message receiver will be evaluated twice. Use an intermediate variable to avoid.\n",
                             FILENAME_GRACEFUL, e->source_line, 1, exponential_method_evaluation);
                     exponential_method_evaluation += 1;
