@@ -43,6 +43,7 @@
 //    code;
 //  }
 
+// - struct access auto-dereference
 // - no typedef, explicit type definition syntax:
 //      type struct vector = { i32 x, y; };
 //      MUST be referred to as ``struct vector''

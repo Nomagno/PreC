@@ -1289,7 +1289,7 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
         return_type = x->compound_literal.type;
         break;
     case StructAccess:
-    case StructDeref:
+    case StructDeref: {
         // Complete constdata detection using the type table.
         // dry run makes sure that nothing will actually be printed
         // TODO: this is a hack, the proper way is to pass dry run along the whole t_expr call tree
@@ -1299,9 +1299,21 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
         t = t_expr(x->struct_access_deref.e);
         DISCARD_QUALIFIERS(t);
 
+        bool is_pointer = false;
+
         if (x->tag == StructDeref) {
+            is_pointer = true;
+            
             if (t && t->tag == Reference)
                 t = t->reference;
+            DISCARD_QUALIFIERS(t);
+        } else {
+            if (t && t->tag == Reference) {
+                t = t->reference;
+                is_pointer = true;
+            } else {
+                is_pointer = false;
+            }
             DISCARD_QUALIFIERS(t);
         }
 
@@ -1392,7 +1404,7 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
         } else {
             t = t_expr(x->struct_access_deref.e);
 
-            if (x->tag == StructDeref && !is_constdata_access) {
+            if (is_pointer && !is_constdata_access) {
                 p("->");
             } else {
                 p(".");
@@ -1403,6 +1415,7 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
             p("%s", x->struct_access_deref.member);
         }
         break;
+    }
     case StructDerefMethod:
     case StructMethod: {
         bool saved_dr = dry_run;
@@ -1413,9 +1426,21 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
 
         DISCARD_QUALIFIERS(t);
 
+        bool is_pointer = false;
+
         if (x->tag == StructDerefMethod) {
+            is_pointer = true;
+            
             if (t && t->tag == Reference)
                 t = t->reference;
+            DISCARD_QUALIFIERS(t);
+        } else {
+            if (t && t->tag == Reference) {
+                t = t->reference;
+                is_pointer = true;
+            } else {
+                is_pointer = false;
+            }
             DISCARD_QUALIFIERS(t);
         }
 
@@ -1458,7 +1483,7 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
         if (!is_constdata_access) {
             t = t_expr(x->struct_access_deref.e);
 
-            if (x->tag == StructDerefMethod) {
+            if (is_pointer) {
                 p("->");
             } else {
                 p(".");
@@ -1472,7 +1497,7 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
         struct ArgumentExpressionList *curr = x->struct_access_deref.method_args;
         p("(");
         struct Expr *e = x->struct_access_deref.e;
-        if (x->tag == StructMethod) {
+        if (!is_pointer) {
             if (e->tag != Identifier) {
                 // Wrapper struct to be able to take reference to an rvalue
                 p("&(struct { %s; }){", t_str_type(original_type, "x", false ));

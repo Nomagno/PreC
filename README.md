@@ -21,6 +21,11 @@ Its major features include:
 - Removed: `+=`, `-=`, `|=`, etc.
 - Removed: `--`, `++`
 - Removed suffixes on constants `999L` `999U` `999F`. Use `999.0` for floats. `0x1000p3` and `1.0e4` float notation is still available.
+- Anonymous structs/unions/enums not allowed, must define structs/unions/enums and give then a name using `type struct TypeName = { /*members*/ };`
+- Statically dispatched constant functions and variables associated to a struct type (accessed like if they were members, but they don't take up space) with `type struct TypeName = { /*members*/ } constdata { /*members with initializers*/ };`
+- Structurally typed tuples `tuple(i32 x, i32 y)` replacing anonymous structs
+- Struct access auto-dereference in most cases.
+- Method call syntax sugar `..` and `->.`
 
 See `examples/informal_spec.prec` and the rest of examples for more details.
 
