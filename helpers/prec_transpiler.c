@@ -70,6 +70,8 @@ struct BufferList *current_buffer;
 
 #define NEW_CAST(_e, _t, _source) DUP_T(Expr, Cast, .cast = { .type = _t, .e = _e }, .source_line = _source)
 
+#define NEW_COMPOUND_LITERAL(_e, _t, _source) DUP_T(Expr, CompoundLiteral, .compound_literal = { .type = _t, .init = DUP_T(Initializer, Data, .data = DUP((struct InitializerList){ .current = DUP_T(Initializer, Expr, .expr = _e, .source_line = _source) , .source_line = _source }), .source_line = _source)}, .source_line = _source)
+
 #define NEW_INT(_x, _source) DUP_T(Expr, Int, .int_num = _x, .source_line = _source)
 
 #define NEW_IDENTIFIER(_id, _source) DUP_T(Expr, Identifier, .identifier = _id, .source_line = _source)
@@ -1339,6 +1341,7 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
                                                 inline_type,
                                                 x->source_line
                                             );
+                                            return_type = inline_type;
                                     } else if (vars->decl->val->tag == Expr) {
                                         constdata_inlined = true;
                                         constdata_inlined_value =
@@ -1347,6 +1350,8 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
                                                 inline_type,
                                                 x->source_line
                                             );
+                                            return_type = inline_type;
+
                                     } else if (vars->decl->val->tag == Code) {
                                         constdata_inlined = true;
                                         constdata_inlined_value =
@@ -1357,6 +1362,7 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
                                                 ),
                                                 x->source_line
                                             );
+                                            return_type = inline_type;
                                     } else {
                                         // fprintf(stderr, "Debug %c %s\n", vars->decl->val->tag, vars->decl->val->code_backchannel);
                                         // exit(1);
@@ -1402,6 +1408,9 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
         bool saved_dr = dry_run;
         dry_run = true;
         t = t_expr(x->struct_access_deref.e);
+
+        struct Type *original_type = t;
+
         DISCARD_QUALIFIERS(t);
 
         if (x->tag == StructDerefMethod) {
@@ -1424,12 +1433,19 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
                     while (!is_constdata_access && decls != NULL) {
                         struct VarList *vars = decls->decl->vars;
                         REWIND_LIST(vars);
+
+                        struct Type *decl_type = decls->decl->type;
+                        DISCARD_QUALIFIERS(decl_type);
+
                         while (!is_constdata_access && vars != NULL) {
                             if (strcmp(vars->decl->name, x->struct_access_deref.member) == 0) {
                                 is_constdata_access = true;
                                 dry_run = saved_dr;
                                 p("_prec_internal_constdata_struct_%s_%s",
                                     t->tag_name, x->struct_access_deref.member);
+                                if (decl_type->tag == FunPointer) {
+                                    return_type = decls->decl->type->fun_pointer.return_type;
+                                }
                             }
                             vars = vars->next;
                         }
@@ -1442,7 +1458,7 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
         if (!is_constdata_access) {
             t = t_expr(x->struct_access_deref.e);
 
-            if (x->tag == StructMethod) {
+            if (x->tag == StructDerefMethod) {
                 p("->");
             } else {
                 p(".");
@@ -1454,23 +1470,27 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
         }
 
         struct ArgumentExpressionList *curr = x->struct_access_deref.method_args;
-        if (curr == NULL) {
-            struct Expr *e = x->struct_access_deref.e;
-            if (x->tag == StructMethod)
-                e = NEW_REFERENCE(e, x->source_line);
-            p("(");
-            t_expr(e);
-            p(")");
+        p("(");
+        struct Expr *e = x->struct_access_deref.e;
+        if (x->tag == StructMethod) {
+            if (e->tag != Identifier) {
+                // Wrapper struct to be able to take reference to an rvalue
+                p("&(struct { %s; }){", t_str_type(original_type, "x", false ));
+                t_expr(e);
+                p("}.x");
+            } else {
+                p("&(");
+                t_expr(e);
+                p(")");
+            }
         } else {
-            struct Expr *e = x->struct_access_deref.e;
-            if (x->tag == StructMethod)
-                e = NEW_REFERENCE(e, x->source_line);
-            p("(");
             t_expr(e);
+        }
+
+        if (curr != NULL) {
             p(",");
 
             REWIND_LIST(curr);
-
             while (curr != NULL) {
                 t_expr(curr->expr);
                 if (curr->next != NULL)
@@ -1478,8 +1498,8 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
                 curr = curr->next;
             }
 
-            p(")");
         }
+        p(")");
         break;
         }
     }
