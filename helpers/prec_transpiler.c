@@ -461,6 +461,7 @@ char *type_id(struct Type *x) {
         case TypeofType:
         case TypeofExpr:
             assert(!"Typeof not supported for tuples for now");
+            break;
         case Tuple: {
             char *retval = NULL;
             //  translate each of the parameters, also applying this as needed:
@@ -1952,45 +1953,45 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
         if (node->decl->val != NULL) {
             // top level functions with no qualifiers and a function initializer get implicitly converted to declarations/definitions
             if (top_level && decl->type->tag == FunPointer && node->decl->val->tag == Code) {
-                p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, true));
+                // Empty marker on symbol stack
+                push_symbol(sym_table, NULL, NULL, true /*is_global*/);
 
                 push_symbol(sym_table, node->decl->name, decl->type, top_level);
                 node->decl->val->code_backchannel = node->decl->name;
 
-                // Empty marker on symbol stack
-                push_symbol(sym_table, NULL, NULL, true /*is_global*/);
+                p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, true));
 
                 set_src(node->decl->val->source_line);
                 t_block(node->decl->val->code, decl->type->fun_pointer.param_list);
             } else {
-                p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, false));
-                p(" = ");
-                set_src(node->decl->val->source_line);
-                t_initializer(node->decl->val, decl->type);
-
                 // TODO: make sure to cull symbols every time a scope is exited,
                 // for now we just insert, this won't fail to compile any
                 // valid programs at least
                 push_symbol(sym_table, node->decl->name, decl->type, top_level);
+
+                p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, false));
+                p(" = ");
+                set_src(node->decl->val->source_line);
+                t_initializer(node->decl->val, decl->type);
 
                 if (freeform) { p("; "); }
                 else          { p(";"); NEWLINE(); }
             }
         } else {
             if (top_level && decl->type->tag == FunPointer) {
+                push_symbol(sym_table, node->decl->name, decl->type, top_level);
+
                 p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, true));
 
                 if (freeform) { p("; "); }
                 else          { p(";"); NEWLINE(); }
-
-                push_symbol(sym_table, node->decl->name, decl->type, top_level);
             } else {
-                p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, false));
-
                 // TODO: make sure to cull symbols every time a scope is exited,
-                // for now we just insert, this won't fail to compile any
+                // for now we just insert, this won't fail to compile most
                 // valid programs at least
                 push_symbol(sym_table, node->decl->name, decl->type, top_level);
+
+                p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, false));
 
                 // in preC, all non-extern variables are zero-initialized by default if no initializer is specified
                 // Check if it's a VLA (if any of the array types contained within are not 100% constant expressions). If it's the case, do not print the initializer
