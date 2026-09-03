@@ -235,7 +235,10 @@ struct Type {
             struct Type *t;
         } array;
 
-        char *tag_name;
+        struct {
+            char *tag_name;
+            struct DeclarationList *const_data;
+        } user_defined_type;
 
         char *c_type;
 

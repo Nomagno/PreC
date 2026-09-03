@@ -558,17 +558,17 @@ char *type_id(struct Type *x) {
         }
         case Struct: {
             char *retval = NULL;
-            asprintf(&retval, "struct_%s", x->tag_name);
+            asprintf(&retval, "struct_%s", x->user_defined_type.tag_name);
             return retval;
         }
         case Union: {
             char *retval = NULL;
-            asprintf(&retval, "union_%s", x->tag_name);
+            asprintf(&retval, "union_%s", x->user_defined_type.tag_name);
             return retval;
         }
         case Enum: {
             char *retval = NULL;
-            asprintf(&retval, "enum_%s", x->tag_name);
+            asprintf(&retval, "enum_%s", x->user_defined_type.tag_name);
             return retval;
         }
         case Array: {
@@ -635,7 +635,11 @@ char *register_tuple_if_needed(struct Type *x) {
         // The first time it's encountered, it is registered as a struct and defined.
         // The name is unique and given by the type_id() function.
         // This gives the effect of all possible tuples appearing to be defined: structural typing.
-        
+
+        insert_type(type_table, type_identifier,
+                    /*TODO: construct a proper entry for enhanced type inference*/ NULL, NULL,
+                    global_indent_level);
+
         // We create a new buffer to print the type to,
         // print the code to it, then restore the current buffer.
         int saved_indent = global_indent_level;
@@ -820,22 +824,24 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
     case Union:
         if (x->tag == Struct) {
             p_t("struct ");
+            if (x->user_defined_type.const_data != NULL)
+                dispatch_constdata(x->user_defined_type.tag_name, x->user_defined_type.const_data, /*TODO: should this be hardcoded?*/ true /*top_level*/);
         } else {
             p_t("union ");
         }
 
-        p_t("%s ", x->tag_name);
+        p_t("%s ", x->user_defined_type.tag_name);
 
         break;
     case Tuple:
         char *type_identifier = register_tuple_if_needed(x);
         if (x->tuple.const_data != NULL)
-            dispatch_constdata(type_id(x), x->tuple.const_data, true /*top_level*/);
+            dispatch_constdata(type_id(x), x->tuple.const_data, /*TODO: should this be hardcoded?*/ true /*top_level*/);
         p_t("struct %s ", type_identifier);
         break;
     case Enum:
         p_t("enum ");
-        p_t("%s ", x->tag_name);
+        p_t("%s ", x->user_defined_type.tag_name);
         break;
     }
     if (isBaseType(x->tag)) {
@@ -1307,7 +1313,7 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
 
         if (x->tag == StructDeref) {
             is_pointer = true;
-            
+
             if (t && t->tag == Reference)
                 t = t->reference;
             DISCARD_QUALIFIERS(t);
@@ -1327,70 +1333,75 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
         bool constdata_inlined = false;
         struct Expr *constdata_inlined_value = NULL;
 
+        char *type_name = NULL;
         if (t && t->tag == Struct) {
-            if (t->tag_name != NULL) {
-                TypeTablePtr entry = fetch_type(type_table, t->tag_name);
-                if (entry != NULL) {
-                    struct DeclarationList *decls = entry->constdata;
+            type_name = t->user_defined_type.tag_name;
+        } else if (t && t->tag == Tuple) {
+            type_name = type_id(t);
+        }
 
-                    if (decls != NULL)
-                        REWIND_LIST(decls);
-                    while (!is_constdata_access && decls != NULL) {
-                        struct VarList *vars = decls->decl->vars;
+        if (type_name != NULL) {
+            TypeTablePtr entry = fetch_type(type_table, type_name);
+            if (entry != NULL) {
+                struct DeclarationList *decls = entry->constdata;
 
-                        REWIND_LIST(vars);
-                        while (!is_constdata_access && vars != NULL) {
-                            if (strcmp(vars->decl->name, x->struct_access_deref.member) == 0) {
-                                is_constdata_access = true;
+                if (decls != NULL)
+                    REWIND_LIST(decls);
+                while (!is_constdata_access && decls != NULL) {
+                    struct VarList *vars = decls->decl->vars;
 
-                                struct Type *inline_type = decls->decl->type;
-                                DISCARD_QUALIFIERS(inline_type);
-                                if (inline_when_possible &&
-                                    (   inline_type->tag == FunPointer
-                                     || inline_type->tag == Reference
-                                     || isBaseType(inline_type->tag))) {
-                                    if (vars->decl->val == NULL) {
-                                        constdata_inlined = true;
-                                        constdata_inlined_value =
-                                            NEW_CAST(
-                                                NEW_INT(0, x->source_line),
-                                                inline_type,
+                    REWIND_LIST(vars);
+                    while (!is_constdata_access && vars != NULL) {
+                        if (strcmp(vars->decl->name, x->struct_access_deref.member) == 0) {
+                            is_constdata_access = true;
+
+                            struct Type *inline_type = decls->decl->type;
+                            DISCARD_QUALIFIERS(inline_type);
+                            if (inline_when_possible &&
+                                (   inline_type->tag == FunPointer
+                                 || inline_type->tag == Reference
+                                 || isBaseType(inline_type->tag))) {
+                                if (vars->decl->val == NULL) {
+                                    constdata_inlined = true;
+                                    constdata_inlined_value =
+                                        NEW_CAST(
+                                            NEW_INT(0, x->source_line),
+                                            inline_type,
+                                            x->source_line
+                                        );
+                                        return_type = inline_type;
+                                } else if (vars->decl->val->tag == Expr) {
+                                    constdata_inlined = true;
+                                    constdata_inlined_value =
+                                        NEW_CAST(
+                                            vars->decl->val->expr,
+                                            inline_type,
+                                            x->source_line
+                                        );
+                                        return_type = inline_type;
+
+                                } else if (vars->decl->val->tag == Code) {
+                                    constdata_inlined = true;
+                                    constdata_inlined_value =
+                                        NEW_REFERENCE(
+                                            NEW_IDENTIFIER(
+                                                vars->decl->val->code_backchannel,
                                                 x->source_line
-                                            );
-                                            return_type = inline_type;
-                                    } else if (vars->decl->val->tag == Expr) {
-                                        constdata_inlined = true;
-                                        constdata_inlined_value =
-                                            NEW_CAST(
-                                                vars->decl->val->expr,
-                                                inline_type,
-                                                x->source_line
-                                            );
-                                            return_type = inline_type;
-
-                                    } else if (vars->decl->val->tag == Code) {
-                                        constdata_inlined = true;
-                                        constdata_inlined_value =
-                                            NEW_REFERENCE(
-                                                NEW_IDENTIFIER(
-                                                    vars->decl->val->code_backchannel,
-                                                    x->source_line
-                                                ),
-                                                x->source_line
-                                            );
-                                            return_type = inline_type;
-                                    } else {
-                                        // fprintf(stderr, "Debug %c %s\n", vars->decl->val->tag, vars->decl->val->code_backchannel);
-                                        // exit(1);
-                                    }
-
+                                            ),
+                                            x->source_line
+                                        );
+                                        return_type = inline_type;
+                                } else {
+                                    // fprintf(stderr, "Debug %c %s\n", vars->decl->val->tag, vars->decl->val->code_backchannel);
+                                    // exit(1);
                                 }
-                                dry_run = saved_dr;
+
                             }
-                            vars = vars->next;
+                            dry_run = saved_dr;
                         }
-                        decls = decls->next;
+                        vars = vars->next;
                     }
+                    decls = decls->next;
                 }
             }
         }
@@ -1403,7 +1414,7 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
         } else if (is_constdata_access && !constdata_inlined) {
             if (!constdata_inlined) {
                 p("_prec_internal_constdata_struct_%s_%s",
-                    t->tag_name, x->struct_access_deref.member);
+                    type_name, x->struct_access_deref.member);
             }
         } else {
             t = t_expr(x->struct_access_deref.e);
@@ -1455,37 +1466,43 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
         // if false, we need to perform a real run later
         bool is_constdata_access = false;
 
+        char *type_name = NULL;
         if (t && t->tag == Struct) {
-            if (t->tag_name != NULL) {
-                TypeTablePtr entry = fetch_type(type_table, t->tag_name);
-                if (entry != NULL) {
-                    struct DeclarationList *decls = entry->constdata;
-                    if (decls != NULL)
-                        REWIND_LIST(decls);
-                    while (!is_constdata_access && decls != NULL) {
-                        struct VarList *vars = decls->decl->vars;
-                        REWIND_LIST(vars);
+            type_name = t->user_defined_type.tag_name;
+        } else if (t && t->tag == Tuple) {
+            type_name = type_id(t);
+        }
+        
+        if (type_name != NULL) {
+            TypeTablePtr entry = fetch_type(type_table, type_name);
+            if (entry != NULL) {
+                struct DeclarationList *decls = entry->constdata;
+                if (decls != NULL)
+                    REWIND_LIST(decls);
+                while (!is_constdata_access && decls != NULL) {
+                    struct VarList *vars = decls->decl->vars;
+                    REWIND_LIST(vars);
 
-                        struct Type *decl_type = decls->decl->type;
-                        DISCARD_QUALIFIERS(decl_type);
+                    struct Type *decl_type = decls->decl->type;
+                    DISCARD_QUALIFIERS(decl_type);
 
-                        while (!is_constdata_access && vars != NULL) {
-                            if (strcmp(vars->decl->name, x->struct_access_deref.member) == 0) {
-                                is_constdata_access = true;
-                                dry_run = saved_dr;
-                                p("_prec_internal_constdata_struct_%s_%s",
-                                    t->tag_name, x->struct_access_deref.member);
-                                if (decl_type->tag == FunPointer) {
-                                    return_type = decls->decl->type->fun_pointer.return_type;
-                                }
+                    while (!is_constdata_access && vars != NULL) {
+                        if (strcmp(vars->decl->name, x->struct_access_deref.member) == 0) {
+                            is_constdata_access = true;
+                            dry_run = saved_dr;
+                            p("_prec_internal_constdata_struct_%s_%s",
+                                type_name, x->struct_access_deref.member);
+                            if (decl_type->tag == FunPointer) {
+                                return_type = decls->decl->type->fun_pointer.return_type;
                             }
-                            vars = vars->next;
                         }
-                        decls = decls->next;
+                        vars = vars->next;
                     }
+                    decls = decls->next;
                 }
             }
         }
+
         dry_run = saved_dr;
         if (!is_constdata_access) {
             t = t_expr(x->struct_access_deref.e);
@@ -1671,8 +1688,20 @@ void dispatch_constdata(char *type_name, struct DeclarationList *data, bool top_
     // Add the helper annotations for function-valued literals.
 
     TypeTablePtr entry = fetch_type(type_table, type_name);
-    if (entry != NULL) {
-        
+
+    if (entry == NULL) {
+        fprintf(stderr, "%s:%d:%d: Compiler error: Attempted to add constdata to nonexistant type %s... what?\n",
+                FILENAME_GRACEFUL, data->source_line, 1, type_name);
+        exit(1);
+    }
+
+    if (entry->constdata == NULL) {
+        entry->constdata = data;
+    } else {
+        /*append to the existing constdata entry, rather than replacing it */
+        /*TODO: do not acknowledge variables already present in the entry, for now it throws a redefinition error anyways so it's fine*/
+        entry->constdata->next = data;
+        entry->constdata->next->prev = entry->constdata;
     }
 
     struct TopLevel *head_of_inserted_constdata_fields = NULL;
@@ -1857,7 +1886,7 @@ void t_typedefinition(struct TypeDefinition *tdef, bool top_level) {
 
 
     if (tdef->tag == NewStruct) {
-        struct DeclarationList *node_regulardata = tdef->struct_or_union_def.const_data;
+        struct DeclarationList *node_regulardata = tdef->struct_or_union_def.declarations;
         if (node_regulardata)
             REWIND_LIST(node_regulardata);
         struct DeclarationList *node_constdata = tdef->struct_or_union_def.const_data;
@@ -1908,6 +1937,14 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
     REWIND_LIST(node);
 
     while (node != NULL) {
+        if (strcmp(node->decl->name, "__impl__") == 0) {
+            // The "__impl__" variable isn't actually translated, it's only used for its constdata-definition side effects
+            t_str_type(decl->type, node->decl->name, false);
+            node = node->next;
+            continue;
+        }
+
+
         if (!freeform) {
             tabs();
         }

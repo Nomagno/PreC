@@ -423,8 +423,6 @@ concrete_type
         { $$ = DUP_T(Type, Array, .array = { .size = $3, .t = $1}); }
     | regular_type '(' '&' ')' '(' parameter_type_list ')'
         { $$ = DUP_T(Type, FunPointer, .fun_pointer = { .return_type = $1, .param_list = $6}); }
-    | TUPLE '(' parameter_type_list ')'
-        { $$ = DUP_T(Type, Tuple, .tuple = { .member_list = $3 }); }
     ;
 
 
@@ -466,12 +464,18 @@ base_type
 	    { $$ = DUP_T(Type, f32); }
     | F64
 	    { $$ = DUP_T(Type, f64); }
+    | TUPLE '(' parameter_type_list ')'
+        { $$ = DUP_T(Type, Tuple, .tuple = { .member_list = $3 }); }
+    | TUPLE '(' parameter_type_list ')' CONSTDATA '{' struct_declaration_list '}'
+        { $$ = DUP_T(Type, Tuple, .tuple = { .member_list = $3, .const_data = $7 }); }
     | STRUCT IDENTIFIER
-	    { $$ = DUP_T(Type, Struct, .tag_name = $2); }
+	    { $$ = DUP_T(Type, Struct, .user_defined_type = { .tag_name = $2 }); }
+    | STRUCT IDENTIFIER CONSTDATA '{' struct_declaration_list '}'
+	    { $$ = DUP_T(Type, Struct, .user_defined_type = { .tag_name = $2, .const_data = $5 }); }
     | UNION  IDENTIFIER
-	    { $$ = DUP_T(Type, Union, .tag_name = $2); }
+	    { $$ = DUP_T(Type, Union, .user_defined_type = { .tag_name = $2 }); }
     | ENUM   IDENTIFIER
-	    { $$ = DUP_T(Type, Enum, .tag_name = $2); }
+	    { $$ = DUP_T(Type, Enum, .user_defined_type = { .tag_name = $2 }); }
 	;
 
 parameter_type_list
