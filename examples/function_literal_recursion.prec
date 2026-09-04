@@ -1,0 +1,12 @@
+c_include "stdio.h"
+
+i32 (&)(void) main = ${
+    u32(&)(u32 x) factorial = ${
+        if (x == 0)
+            return 1;
+        else
+            return x * __recurse(x-1);
+    };
+
+    printf("Factorial of 4: %d\n", factorial(4));
+};

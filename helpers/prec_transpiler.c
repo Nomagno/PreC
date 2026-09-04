@@ -46,6 +46,7 @@ fclose(f);
 
 unsigned global_identifier_counter = 0;
 int global_indent_level = 0;
+char *current_funname = NULL;
 
 SymPtr sym_table;
 TypeTablePtr type_table;
@@ -1049,6 +1050,7 @@ void t_initializer(struct Initializer *x, struct Type *t) {
 
         struct BufferList *saved_buffer = current_buffer;
         struct BufferList *tmp = buffer_list;
+        char *saved_funname = current_funname;
 
         buffer_list = create_buffer();
         buffer_list->next = tmp;
@@ -1060,6 +1062,7 @@ void t_initializer(struct Initializer *x, struct Type *t) {
         global_identifier_counter += 1;
 
         x->code_backchannel = unique_temporary_identifier;
+        current_funname = unique_temporary_identifier;
 
         p("static ");
 
@@ -1076,6 +1079,7 @@ void t_initializer(struct Initializer *x, struct Type *t) {
 
         current_buffer = saved_buffer;
         global_indent_level = saved_indent;
+        current_funname = saved_funname;
 
         // This will have been set to true by t_block()
         newline_just_printed = false;
@@ -1275,7 +1279,11 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
         p("%s", x->string);
         break;
     case Identifier:
-        p("%s", x->identifier);
+        if (strcmp(x->identifier, "__recurse") == 0 && current_funname != NULL) {
+            p("%s", current_funname);
+        } else {
+            p("%s", x->identifier);
+        }
         // Don't bother with calculating the return type for prec anon stuff, they are not in the symbol table.
         if (strcmp(x->identifier, "_prec_anon") != 0) {
             return_type = fetch_symbol_type(sym_table, x->identifier);
@@ -2029,12 +2037,18 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
                 push_symbol(sym_table, NULL, NULL, true /*is_global*/);
 
                 push_symbol(sym_table, node->decl->name, decl->type, top_level);
+
+                char *saved_funname = current_funname;
+
+                current_funname = node->decl->name;
                 node->decl->val->code_backchannel = node->decl->name;
 
                 p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, true));
 
                 set_src(node->decl->val->source_line);
                 t_block(node->decl->val->code, decl->type->fun_pointer.param_list);
+
+                current_funname = saved_funname;
             } else {
                 // TODO: make sure to cull symbols every time a scope is exited,
                 // for now we just insert, this won't fail to compile any
