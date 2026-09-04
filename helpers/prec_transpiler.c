@@ -148,8 +148,13 @@ extern const char *filename;
                 fprintf(stderr, "\" last known line: %d\n", previous_source_line); \
                 newline_just_printed = 0; \
             } else { \
-                if (pretty_filename != NULL)\
+                if (pretty_filename != NULL) { \
+                    fseek(current_buffer->stream, 0, SEEK_CUR); \
+                    char x = fgetc(current_buffer->stream); \
+                    ungetc(x, current_buffer->stream); \
+                    if (x != '\n') fprintf(current_buffer->stream, "\n"); \
                     fprintf(current_buffer->stream, "#line %d\n", source_line); \
+                } \
                 source_line = 0; \
                 newline_just_printed = 0; \
                 tabs(); \
@@ -339,7 +344,7 @@ void dispatch_array(struct TypeBuffer *type_buffer, struct Expr *expression) {
 
     if (expression != NULL) {
         char *expression_buffer = calloc(512, 1);
-        FILE *stream = fmemopen(expression_buffer, 512, "w");
+        FILE *stream = fmemopen(expression_buffer, 512, "w+");
 
         struct BufferList *saved_buffer = current_buffer;
         current_buffer = &(struct BufferList){ .stream = stream };
@@ -612,7 +617,7 @@ char *type_id(struct Type *x) {
 
 char *global_tuple_array[1024];
 
-char *register_tuple_if_needed(struct Type *x) {
+char *register_tuple_if_needed(struct Type *x, bool *had_to_register) {
     assert(x != NULL);
 
     char *type_identifier = type_id(x);
@@ -630,7 +635,9 @@ char *register_tuple_if_needed(struct Type *x) {
             break;
         }
     }
+    *had_to_register = false;
     if (!registered) {
+        *had_to_register = true;
         global_tuple_array[last_free_index] = type_identifier;
         // Tuples are lazily created:
         // The first time it's encountered, it is registered as a struct and defined.
@@ -693,7 +700,7 @@ char *register_tuple_if_needed(struct Type *x) {
     return type_identifier;
 }
 
-void dispatch_constdata(char *type_name, struct DeclarationList *data, bool top_level);
+void dispatch_constdata(char *type_name, struct DeclarationList *data, bool new_type, bool top_level);
 
 void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
     switch (x->tag) {
@@ -826,7 +833,7 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
         if (x->tag == Struct) {
             p_t("struct ");
             if (x->user_defined_type.const_data != NULL)
-                dispatch_constdata(x->user_defined_type.tag_name, x->user_defined_type.const_data, /*TODO: should this be hardcoded?*/ true /*top_level*/);
+                dispatch_constdata(x->user_defined_type.tag_name, x->user_defined_type.const_data, false /*new_type*/, /*TODO: should this be hardcoded?*/ true /*top_level*/);
         } else {
             p_t("union ");
         }
@@ -835,9 +842,10 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
 
         break;
     case Tuple:
-        char *type_identifier = register_tuple_if_needed(x);
+        bool had_to_register;
+        char *type_identifier = register_tuple_if_needed(x, &had_to_register);
         if (x->tuple.const_data != NULL)
-            dispatch_constdata(type_id(x), x->tuple.const_data, /*TODO: should this be hardcoded?*/ true /*top_level*/);
+            dispatch_constdata(type_id(x), x->tuple.const_data, had_to_register /*new_type*/, /*TODO: should this be hardcoded?*/ true /*top_level*/);
         p_t("struct %s ", type_identifier);
         break;
     case Enum:
@@ -1680,7 +1688,29 @@ bool is_const_sized_type(struct Type *x) {
     }
 }
 
-void dispatch_constdata(char *type_name, struct DeclarationList *data, bool top_level) {
+bool var_in_list(char *name, struct DeclarationList *data) {
+    REWIND_LIST(data);
+    while (data != NULL) {
+        struct VarList *vars_node = data->decl->vars;
+        REWIND_LIST(vars_node);
+        if (vars_node == NULL) {
+            data = data->next;
+            continue;
+        }
+
+        while (vars_node != NULL) {
+            if (strcmp(name, vars_node->decl->name) == 0) {
+                return true;
+            }
+            vars_node = vars_node->next;
+        }
+
+        data = data->next;
+    }
+    return false;
+}
+
+void dispatch_constdata(char *type_name, struct DeclarationList *data, bool new_type, bool top_level) {
     // Create a _prec_internal_constdata_struct_ ## structname _ ## fieldname
     //    const global variable declaration
     //    for each field,
@@ -1688,6 +1718,7 @@ void dispatch_constdata(char *type_name, struct DeclarationList *data, bool top_
     //    set it to be initialized to the proper data.
     // Add the helper annotations for function-valued literals.
 
+    assert(data != NULL);
     TypeTablePtr entry = fetch_type(type_table, type_name);
 
     if (entry == NULL) {
@@ -1696,17 +1727,21 @@ void dispatch_constdata(char *type_name, struct DeclarationList *data, bool top_
         exit(1);
     }
 
+    bool need_to_append = false;
+    struct DeclarationList *append_to_list = NULL;
+
     if (entry->constdata == NULL) {
         entry->constdata = data;
     } else {
-        /*append to the existing constdata entry, rather than replacing it */
-        /*TODO: do not acknowledge variables already present in the entry, for now it throws a redefinition error anyways so it's fine*/
-        entry->constdata->next = data;
-        entry->constdata->next->prev = entry->constdata;
+        need_to_append = true;
+        append_to_list = entry->constdata;
+        while (append_to_list->next != NULL) append_to_list = append_to_list->next;
     }
+
 
     struct TopLevel *head_of_inserted_constdata_fields = NULL;
 
+    REWIND_LIST(data);
     while (data != NULL) {
         //struct Type *constdata_curr_decl_type = data->decl->type;
         struct VarList *vars_node = data->decl->vars;
@@ -1718,6 +1753,31 @@ void dispatch_constdata(char *type_name, struct DeclarationList *data, bool top_
 
         REWIND_LIST(vars_node);
         while (vars_node != NULL) {
+            char *name = vars_node->decl->name;
+            if (need_to_append && var_in_list(name, entry->constdata)) {
+                // Do not append a variable it is already present
+                vars_node = vars_node->next;
+                continue;
+            } else if (need_to_append) {
+                // Append it
+                append_to_list->next =
+                    DUP((struct DeclarationList) {
+                        .decl = DUP((struct Declaration) {
+                            .class = None,
+                            .type = data->decl->type,
+                            DUP((struct VarList){ .source_line = vars_node->source_line,
+                                .decl= DUP((struct VarDecl) {
+                                                .name = vars_node->decl->name,
+                                                .val = vars_node->decl->val,
+                                                .source_line = data->source_line
+                                            })
+                            })
+                        }),
+                        .prev = append_to_list, .next = NULL,
+                        .source_line = vars_node->source_line
+                    });
+            }
+
 
             // build the top-level declaration
             struct Declaration *constdata_field_decl =
@@ -1755,26 +1815,41 @@ void dispatch_constdata(char *type_name, struct DeclarationList *data, bool top_
             //       Because of the rules that allow for limited structural typing.
             //       Maybe make a branch of the PreC transpiler that targets C23 in the future?
 
-            if (top_level) {
+            if (top_level && new_type) {
+                struct TopLevel *top_level_to_append = top_level_to_append =
+                            DUP_T(TopLevel, Decl,
+                                    .decl = constdata_field_decl,
+                                    .prev = top_level_list,
+                                    .source_line = constdata_field_decl->source_line
+                                );
+
                 if (head_of_inserted_constdata_fields == NULL) {
                     struct TopLevel *saved_next = top_level_list->next;
-                    top_level_list->next = DUP_T(TopLevel, Decl,
-                        .decl = constdata_field_decl,
-                        .prev = top_level_list,
-                        .source_line = constdata_field_decl->source_line
-                    );
+                    top_level_list->next = top_level_to_append;
                     top_level_list->next->next = saved_next;
                     head_of_inserted_constdata_fields = top_level_list->next;
                 } else {
                     struct TopLevel *saved_next = head_of_inserted_constdata_fields->next;
-                    head_of_inserted_constdata_fields->next = DUP_T(TopLevel, Decl,
-                        .decl = constdata_field_decl,
-                        .prev = top_level_list,
-                        .source_line = constdata_field_decl->source_line
-                    );
+                    head_of_inserted_constdata_fields->next = top_level_to_append;
                     head_of_inserted_constdata_fields->next->next = saved_next;
                     head_of_inserted_constdata_fields = head_of_inserted_constdata_fields->next;
                 }
+            } else if (top_level && !new_type) {
+                // for the ergonomics to make sense in this case, we append BEFORE the current top-level unit
+                int saved_indent = global_indent_level;
+                global_indent_level = 0;
+
+                struct BufferList *saved_buffer = current_buffer;
+                struct BufferList *tmp = buffer_list;
+
+                buffer_list = create_buffer();
+                buffer_list->next = tmp;
+                current_buffer = buffer_list;
+
+                t_declaration(constdata_field_decl, false /*freeform*/, true /*top_level*/);
+
+                current_buffer = saved_buffer;
+                global_indent_level = saved_indent;
             } else {
                 t_declaration(constdata_field_decl, false /*freeform*/, false /*top_level*/);
             }
@@ -1888,11 +1963,8 @@ void t_typedefinition(struct TypeDefinition *tdef, bool top_level) {
 
     if (tdef->tag == NewStruct) {
         struct DeclarationList *node_regulardata = tdef->struct_or_union_def.declarations;
-        if (node_regulardata)
-            REWIND_LIST(node_regulardata);
         struct DeclarationList *node_constdata = tdef->struct_or_union_def.const_data;
-        if (node_constdata)
-            REWIND_LIST(node_constdata);
+
         if (tdef->struct_or_union_def.name && node_regulardata) {
             // TODO: make sure we cull types every time we exit a scope,
             // for now we just insert, this won't fail to compile any
@@ -1905,7 +1977,7 @@ void t_typedefinition(struct TypeDefinition *tdef, bool top_level) {
             // mostly because it's annoying to implement
 
             if (node_constdata != NULL) {
-                dispatch_constdata(tdef->struct_or_union_def.name, node_constdata, top_level);
+                dispatch_constdata(tdef->struct_or_union_def.name, node_constdata, true /*new_type*/, top_level);
             }
         }
     }

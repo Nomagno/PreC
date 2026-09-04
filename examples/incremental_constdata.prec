@@ -1,0 +1,16 @@
+type struct Vec2 = {
+    i32 x; i32 y;
+} constdata {
+     i32 k = 7;
+     i32 o = 99;
+     i32 (&)(void) val = ${
+        return 50;
+     };
+ };
+
+i32 (&)(void) main = ${
+    struct Vec2 var;
+    i32 b = var.k;
+    struct Vec2 constdata { i32 k = 6; struct Vec2 new = {5, 7}; } __impl__;
+    struct Vec2 u = var.new;
+};
