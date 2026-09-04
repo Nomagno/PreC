@@ -1697,6 +1697,9 @@ bool is_const_sized_type(struct Type *x) {
 }
 
 bool var_in_list(char *name, struct DeclarationList *data) {
+    if (data == NULL)
+        return false;
+
     REWIND_LIST(data);
     while (data != NULL) {
         struct VarList *vars_node = data->decl->vars;
@@ -1735,16 +1738,11 @@ void dispatch_constdata(char *type_name, struct DeclarationList *data, bool new_
         exit(1);
     }
 
-    bool need_to_append = false;
     struct DeclarationList *append_to_list = NULL;
 
-    if (entry->constdata == NULL) {
-        entry->constdata = data;
-    } else {
-        need_to_append = true;
-        append_to_list = entry->constdata;
-        while (append_to_list->next != NULL) append_to_list = append_to_list->next;
-    }
+    append_to_list = entry->constdata;
+    while (append_to_list != NULL && append_to_list->next != NULL)
+        append_to_list = append_to_list->next;
 
 
     struct TopLevel *head_of_inserted_constdata_fields = NULL;
@@ -1762,13 +1760,17 @@ void dispatch_constdata(char *type_name, struct DeclarationList *data, bool new_
         REWIND_LIST(vars_node);
         while (vars_node != NULL) {
             char *name = vars_node->decl->name;
-            if (need_to_append && var_in_list(name, entry->constdata)) {
+
+            // The "__impl__" variable isn't actually translated, it's only used for its constdata-definition side effects
+            bool is_impl = strcmp(name, "__impl__") == 0;
+
+            if (!is_impl && var_in_list(name, entry->constdata)) {
                 // Do not append a variable it is already present
                 vars_node = vars_node->next;
                 continue;
-            } else if (need_to_append) {
+            } else if (!is_impl) {
                 // Append it
-                append_to_list->next =
+                struct DeclarationList *to_be_appended =
                     DUP((struct DeclarationList) {
                         .decl = DUP((struct Declaration) {
                             .class = None,
@@ -1784,6 +1786,18 @@ void dispatch_constdata(char *type_name, struct DeclarationList *data, bool new_
                         .prev = append_to_list, .next = NULL,
                         .source_line = vars_node->source_line
                     });
+                if (append_to_list == NULL) {
+                    append_to_list = to_be_appended;
+                    entry->constdata = to_be_appended;
+                } else {
+                    append_to_list->next = to_be_appended;
+                    append_to_list = append_to_list->next;
+                }
+            } else { // is_impl == true
+                // The "__impl__" variable isn't actually translated, it's only used for its constdata-definition side effects
+                t_str_type(data->decl->type, name, false);
+                vars_node = vars_node->next;
+                continue;
             }
 
 
@@ -1901,6 +1915,13 @@ void t_typedefinition(struct TypeDefinition *tdef, bool top_level) {
                 struct VarList *var_node = node->decl->vars;
                 REWIND_LIST(var_node);
                 while (var_node != NULL) {
+                    if (strcmp(var_node->decl->name, "__impl__") == 0) {
+                        // The "__impl__" variable isn't actually translated, it's only used for its constdata-definition side effects
+                        t_str_type(node->decl->type, var_node->decl->name, false);
+                        var_node = var_node->next;
+                        continue;
+                    }
+
                     set_src(var_node->source_line);
 
                     // Struct/union members are always implicitly mut.
