@@ -2446,6 +2446,8 @@ void t_statement(struct Statement *stat) {
 
 void transpile(struct TopLevel *top) {
     printf("#include \"stdint.h\"\n");
+    // BIND macro: do not use if you do not have a compiler that supports statement expressions!
+    printf("#define LET(_name, _expr, ...) ({ typeof(_expr) _name = _expr; __VA_ARGS__; })\n");
     if (pretty_filename != NULL)
         printf("#line 1 \"%s\"\n", pretty_filename);
 
