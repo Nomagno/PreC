@@ -35,13 +35,13 @@
 
 #define MAKE_VTABLE_ENTRY(...) GET_TRAIT_METHOD_RETURN_TYPE __VA_ARGS__ (&)(void &) GET_TRAIT_METHOD_NAME __VA_ARGS__;
 
-#define MAKE_DYN(_trait) type TRAIT(_trait) = { MAP(MAKE_VTABLE_ENTRY, UNPAREN(METHODS_##_trait)) }; DYN(_trait) constdata { MAKE_DYN_SUGAR(_trait, UNPAREN(METHODS_##_trait)) } __impl__
+#define MAKE_TRAIT(_trait) type TRAIT(_trait) = { MAP(MAKE_VTABLE_ENTRY, UNPAREN(METHODS_##_trait)) }; DYN(_trait) constdata { MAKE_DYN_SUGAR(_trait, UNPAREN(METHODS_##_trait)) } __impl__
 
 #define TRAIT(_name) struct Trait##_name
 
 #define GENERATE_VTABLE_ASSIGNMENT(_data, _instance) .GET_TRAIT_METHOD_NAME _data = <_instance>{0}.GET_TRAIT_METHOD_NAME _data,
 
-#define VTABLE(_trait, _instance) TRAIT(_trait) _trait##_vtable = { \
+#define IMPL_TRAIT(_trait, _instance) TRAIT(_trait) _trait##_vtable = { \
       MAP_UD(GENERATE_VTABLE_ASSIGNMENT, _instance, UNPAREN(METHODS_##_trait)) \
     }; \
     DYN(_trait) (&)(_instance & self) trait_##_trait = ${ \
@@ -68,7 +68,7 @@ c_include "stdio.h"
 )
 */
 #define METHODS_Animal ((void, speak), (i32, getAge))
-MAKE_DYN(Animal);
+MAKE_TRAIT(Animal);
 
 
 
@@ -78,7 +78,7 @@ type Dog = {
 } constdata {
     void (&)(Dog & self) speak = ${ printf("Woof\n"); };
     i32 (&)(Dog & self) getAge = ${ return self->age; };
-    VTABLE(Animal, Dog);
+    IMPL_TRAIT(Animal, Dog);
 };
 
 #define Cat struct Cat
@@ -87,7 +87,7 @@ type Cat = {
 } constdata {
     void (&)(Cat & self) speak = ${ printf("Meow\n"); };
     i32 (&)(Cat & self) getAge = ${ return self->age; };
-    VTABLE(Animal, Cat);
+    IMPL_TRAIT(Animal, Cat);
 };
 
 void (&)(DYN(Animal) animal) printAnimalInfo = ${
@@ -100,6 +100,10 @@ i32 (&)(void) main = ${
     Dog Bobi = { .age = 12 };
     Cat Luna = { .age = 14 };
 
+    // Dynamically dispatched
     printAnimalInfo(Bobi..trait_Animal());
     printAnimalInfo(Luna..trait_Animal());
+
+    // Statically dispacthed 
+    Luna..speak();
 };
