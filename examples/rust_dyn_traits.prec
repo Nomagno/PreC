@@ -1,30 +1,74 @@
-c_include "stdio.h"
+/*setup*/
+#include "map.preh"
 
-#define DYN(_t) tuple(void & data, _t & vtable)
 
-#define Animal struct TraitAnimal
-type struct TraitAnimal = {
-    void (&)(void &) speak;
-    i32 (&)(void &) getAge;
+#define PRIMITIVE_CAT(a, ...) a ## __VA_ARGS__
+#define CAT(a, ...) PRIMITIVE_CAT(a, __VA_ARGS__)
+
+#define IGNORE_UNPAREN_
+#define UNPAREN_(...) UNPAREN_ __VA_ARGS__
+#define UNPAREN(x) CAT(IGNORE_, UNPAREN_ x)
+
+
+
+/*dyn trait macro library*/
+#define DYN(_trait) tuple(void & data, TRAIT(_trait) & vtable)
+
+#define MAKE_METHOD_SUGAR(_data, _trait) GET_TRAIT_METHOD_RETURN_TYPE _data (&)(DYN(_trait) & self)\
+    GET_TRAIT_METHOD_NAME _data = ${ return self->vtable->GET_TRAIT_METHOD_NAME _data (self->data); };
+
+#define MAKE_DYN_SUGAR(_trait, ...) MAP_UD(MAKE_METHOD_SUGAR, _trait, __VA_ARGS__)
+
+
+#define GET_TRAIT_METHOD_RETURN_TYPE0(_x, _y) _x
+#define GET_TRAIT_METHOD_RETURN_TYPE1(_x, _y)
+#define GET_TRAIT_METHOD_RETURN_TYPE_SELECTOR(_x, useless, _n) GET_TRAIT_METHOD_RETURN_TYPE##_n _x
+//#define GET_TRAIT_METHOD_RETURN_TYPE(...) MAP_UD_I(GET_TRAIT_METHOD_RETURN_TYPE_SELECTOR, useless, __VA_ARGS__)
+
+#define GET_TRAIT_METHOD_RETURN_TYPE(_x, _y) _x
+
+#define GET_TRAIT_METHOD_NAME0(_x, _y) _y
+#define GET_TRAIT_METHOD_NAME1(_x, _y)
+#define GET_TRAIT_METHOD_NAME_SELECTOR(_x, useless, _n) GET_TRAIT_METHOD_NAME##_n _x
+//#define GET_TRAIT_METHOD_NAME(...) MAP_UD_I(GET_TRAIT_METHOD_NAME_SELECTOR, useless, __VA_ARGS__)
+#define GET_TRAIT_METHOD_NAME(_x, _y) _y
+
+#define MAKE_VTABLE_ENTRY(...) GET_TRAIT_METHOD_RETURN_TYPE __VA_ARGS__ (&)(void &) GET_TRAIT_METHOD_NAME __VA_ARGS__;
+
+#define MAKE_DYN(_trait) type TRAIT(_trait) = { MAP(MAKE_VTABLE_ENTRY, UNPAREN(METHODS_##_trait)) }; DYN(_trait) constdata { MAKE_DYN_SUGAR(_trait, UNPAREN(METHODS_##_trait)) } __impl__
+
+#define TRAIT(_name) struct Trait##_name
+
+#define GENERATE_VTABLE_ASSIGNMENT(_data, _instance) .GET_TRAIT_METHOD_NAME _data = <_instance>{0}.GET_TRAIT_METHOD_NAME _data,
+
+#define VTABLE(_trait, _instance) TRAIT(_trait) _trait##_vtable = { \
+      MAP_UD(GENERATE_VTABLE_ASSIGNMENT, _instance, UNPAREN(METHODS_##_trait)) \
+    }; \
+    DYN(_trait) (&)(_instance & self) trait_##_trait = ${ \
+    return <DYN(_trait)>{.data = self, .vtable = &(self->_trait##_vtable) }; \
 };
 
-/*Syntax sugar for the wide pointer have its own methods that dispatch themselves*/
-DYN(Animal) constdata {
-    void (&)(DYN(Animal) & self) speak = ${ self->vtable->speak(self->data); };
-    i32 (&)(DYN(Animal) & self) getAge = ${ return self->vtable->getAge(self->data); };
-} __impl__;
 
-#define ANIMAL_VTABLE(_t) \
-    struct TraitAnimal animal_vtable = { \
-        .speak = <_t>{0}.speak, \
-        .getAge = <_t>{0}.getAge, \
-    }; \
-    DYN(Animal) (&)(_t & self) trait_animal = ${ \
-        return <DYN(Animal)>{.data = self, .vtable = &self->animal_vtable }; \
-    };
+/*------------------------------------------------------------*/
+/*------------------------------------------------------------*/
+/*------------------------------------------------------------*/
+/*------------------------------------------------------------*/
+/*------------------------------------------------------------*/
 
+/*Code example:*/
 
+c_include "stdio.h"
 
+/*
+(
+    (return type of method 1, return type of method 1),
+    (return type of method 2, return type of method 2),
+    ...
+    (return type of method N, return type of method N)
+)
+*/
+#define METHODS_Animal ((void, speak), (i32, getAge))
+MAKE_DYN(Animal);
 
 
 
@@ -34,7 +78,7 @@ type Dog = {
 } constdata {
     void (&)(Dog & self) speak = ${ printf("Woof\n"); };
     i32 (&)(Dog & self) getAge = ${ return self->age; };
-    ANIMAL_VTABLE(Dog);
+    VTABLE(Animal, Dog);
 };
 
 #define Cat struct Cat
@@ -43,7 +87,7 @@ type Cat = {
 } constdata {
     void (&)(Cat & self) speak = ${ printf("Meow\n"); };
     i32 (&)(Cat & self) getAge = ${ return self->age; };
-    ANIMAL_VTABLE(Cat);
+    VTABLE(Animal, Cat);
 };
 
 void (&)(DYN(Animal) animal) printAnimalInfo = ${
@@ -56,6 +100,6 @@ i32 (&)(void) main = ${
     Dog Bobi = { .age = 12 };
     Cat Luna = { .age = 14 };
 
-    printAnimalInfo(Bobi..trait_animal());
-    printAnimalInfo(Luna..trait_animal());
+    printAnimalInfo(Bobi..trait_Animal());
+    printAnimalInfo(Luna..trait_Animal());
 };
