@@ -1306,8 +1306,10 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
         t_expr(x->ternary.if_false);
         break;
     case Cast:
+        p("(");
         p("("); p("%s", t_str_type(x->cast.type, NULL, false)); p(")");
         t_expr(x->cast.e);
+        p(")");
         return_type = x->cast.type;
         break;
     case CompoundLiteral:

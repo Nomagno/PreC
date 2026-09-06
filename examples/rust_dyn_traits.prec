@@ -1,0 +1,61 @@
+c_include "stdio.h"
+
+#define DYN(_t) tuple(void & data, _t & vtable)
+
+#define Animal struct TraitAnimal
+type struct TraitAnimal = {
+    void (&)(void &) speak;
+    i32 (&)(void &) getAge;
+};
+
+/*Syntax sugar for the wide pointer have its own methods that dispatch themselves*/
+DYN(Animal) constdata {
+    void (&)(DYN(Animal) & self) speak = ${ self->vtable->speak(self->data); };
+    i32 (&)(DYN(Animal) & self) getAge = ${ return self->vtable->getAge(self->data); };
+} __impl__;
+
+#define ANIMAL_VTABLE(_t) \
+    struct TraitAnimal animal_vtable = { \
+        .speak = <_t>{0}.speak, \
+        .getAge = <_t>{0}.getAge, \
+    }; \
+    DYN(Animal) (&)(_t & self) trait_animal = ${ \
+        return <DYN(Animal)>{.data = self, .vtable = &self->animal_vtable }; \
+    };
+
+
+
+
+
+
+#define Dog struct Dog
+type Dog = {
+    i32 age;
+} constdata {
+    void (&)(Dog & self) speak = ${ printf("Woof\n"); };
+    i32 (&)(Dog & self) getAge = ${ return self->age; };
+    ANIMAL_VTABLE(Dog);
+};
+
+#define Cat struct Cat
+type Cat = {
+    i32 age;
+} constdata {
+    void (&)(Cat & self) speak = ${ printf("Meow\n"); };
+    i32 (&)(Cat & self) getAge = ${ return self->age; };
+    ANIMAL_VTABLE(Cat);
+};
+
+void (&)(DYN(Animal) animal) printAnimalInfo = ${
+    printf("This animal is %d years old\n", animal..getAge());
+    printf("This animal says: ");
+    animal..speak();
+};
+
+i32 (&)(void) main = ${
+    Dog Bobi = { .age = 12 };
+    Cat Luna = { .age = 14 };
+
+    printAnimalInfo(Bobi..trait_animal());
+    printAnimalInfo(Luna..trait_animal());
+};
