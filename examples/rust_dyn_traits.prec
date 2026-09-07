@@ -70,6 +70,11 @@ c_include "stdio.h"
 #define METHODS_Animal ((void, speak), (i32, getAge))
 MAKE_TRAIT(Animal);
 
+#define ANIMAL_DEFAULT_GETAGE(_type) \
+    i32 (&)(_type & self) getAge = ${ return self->age; }
+
+/*Animal provides a default implementation of getAge*/
+#define IMPL_TRAIT_ANIMAL(_type) ANIMAL_DEFAULT_GETAGE(_type); IMPL_TRAIT(Animal, _type)
 
 
 #define Dog struct Dog
@@ -77,8 +82,9 @@ type Dog = {
     i32 age;
 } constdata {
     void (&)(Dog & self) speak = ${ printf("Woof\n"); };
-    i32 (&)(Dog & self) getAge = ${ return self->age; };
-    IMPL_TRAIT(Animal, Dog);
+    /*Override implementation of getAge*/
+    i32 (&)(Dog & self) getAge = ${ return self->age*2; };
+    IMPL_TRAIT_ANIMAL(Dog);
 };
 
 #define Cat struct Cat
@@ -86,8 +92,8 @@ type Cat = {
     i32 age;
 } constdata {
     void (&)(Cat & self) speak = ${ printf("Meow\n"); };
-    i32 (&)(Cat & self) getAge = ${ return self->age; };
-    IMPL_TRAIT(Animal, Cat);
+    /*Default implementation of getAge*/
+    IMPL_TRAIT_ANIMAL(Cat);
 };
 
 void (&)(DYN(Animal) animal) printAnimalInfo = ${
@@ -104,6 +110,6 @@ i32 (&)(void) main = ${
     printAnimalInfo(Bobi..trait_Animal());
     printAnimalInfo(Luna..trait_Animal());
 
-    // Statically dispacthed 
+    // Statically dispacthed
     Luna..speak();
 };
