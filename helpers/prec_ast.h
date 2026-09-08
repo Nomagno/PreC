@@ -9,7 +9,7 @@
     #define DUP(...) ({typeof(__VA_ARGS__) *tmp;\
                       tmp = malloc(sizeof(__VA_ARGS__));\
                       *tmp = __VA_ARGS__;\
-                      tmp->source_line = yylineno;\
+                      tmp->source_line = PREC_LINE_NUMBER;\
                       tmp; })
 #else
     #define DUP(...) ({typeof(__VA_ARGS__) *tmp;\

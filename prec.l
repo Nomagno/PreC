@@ -17,11 +17,49 @@ int yyerror(const char *s);
 
 void count(void);
 void comment(void);
+
+extern char *pretty_filename;
+
+int column = 0;
+char *last_preprocessor_file_name = NULL;
+int real_line_number = -1;
 %}
 
 %%
+
 "/*"			{ comment(); }
 "//"[^\n]*              { /* consume //-comment */ }
+
+
+^"#"\ [0-9]+\ \"[A-Z\-a-z_\.\<\>/]+\".*[\n] {
+    /* See: https://gcc.gnu.org/onlinedocs/cpp/Preprocessor-Output.html */
+
+    char *mystring = strdup(yytext);
+    mystring += 2; /*past #, past space*/
+
+    char *mystring_name = NULL;
+    int current_line_number = strtol(mystring, &mystring_name, 10);
+    mystring_name += 2; /*past space, past quote*/
+
+    int i;
+    for (i = 0; mystring_name[i] != '"'; i++) {
+        ;
+    }
+    mystring_name[i] = '\0';
+    last_preprocessor_file_name = strdup(mystring_name);
+
+    mystring_name[i] = '"';
+
+    free(mystring-2);
+
+    //printf("Consumed %d, %s;\n", current_line_number, last_preprocessor_file_name);
+
+    if (last_preprocessor_file_name && pretty_filename) {
+        if (strcmp(last_preprocessor_file_name, pretty_filename) == 0) {
+            real_line_number = current_line_number;
+        }
+    }
+}
 
 
 "c_include"    { count(); return(C_INCLUDE); }
@@ -130,7 +168,17 @@ L?\"(\\.|[^\\"\n])*\"	{ count(); yylval.string_literal=strdup(yytext); return(ST
 ">"		{ count(); return('>'); }
 "?"		{ count(); return('?'); }
 
-[ \t\v\n\f]		{ count(); }
+[ \t\v\f]		{ count(); }
+[\n] {
+    column = 0;
+
+    if (last_preprocessor_file_name && pretty_filename) {
+        if (strcmp(last_preprocessor_file_name, pretty_filename) == 0) {
+            real_line_number += 1;
+        }
+    }
+}
+
 .			{ /* Add code to complain about unmatched characters */ }
 
 %%
@@ -149,17 +197,12 @@ void comment(void)
     yyerror("unterminated comment");
 }
 
-
-int column = 0;
-
 void count(void)
 {
     int i;
 
     for (i = 0; yytext[i] != '\0'; i++)
-        if (yytext[i] == '\n')
-            column = 0;
-        else if (yytext[i] == '\t')
+        if (yytext[i] == '\t')
             column += 8 - (column % 8);
         else
             column++;

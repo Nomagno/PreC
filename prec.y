@@ -22,8 +22,13 @@
     int yyerror(const char *s);
     int yylex(void);
     extern int yylineno;
+    extern int pretty_lineno;
+
     extern char *filename;
     extern char *pretty_filename;
+
+    extern int real_line_number;
+    #define PREC_LINE_NUMBER ((real_line_number >= 0) ? real_line_number : yylineno)
 
 %}
 
@@ -733,7 +738,7 @@ int yyerror(const char *s)
     if (local_file != NULL) {
         char line[1024];
         while (fgets(line, sizeof(line), local_file) != NULL) {
-            if ((yylineno == 0 && count == 0) || (yylineno > 0 && count == yylineno-1) || (yylineno > 1 && count == yylineno-2)) {
+            if ((PREC_LINE_NUMBER == 0 && count == 0) || (PREC_LINE_NUMBER > 0 && count == PREC_LINE_NUMBER-1) || (PREC_LINE_NUMBER > 1 && count == PREC_LINE_NUMBER-2)) {
                 fprintf(stderr, "%s", line);
                 count += 1;
             } else {
@@ -743,6 +748,6 @@ int yyerror(const char *s)
         fclose(local_file);
     }
 	fprintf(stderr, "%*s\n", column, "^");
-    fprintf(stderr, "%s:%d:%d: Error near indicated line: %s\n", filename, yylineno, column+1, s);
+    fprintf(stderr, "%s:%d:%d: Error near indicated line: %s\n", filename, PREC_LINE_NUMBER, column+1, s);
 	return 1;
 }

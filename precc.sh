@@ -39,7 +39,8 @@ transpile() {
     mv "$tmp2" "$tmp2"."$ext"
     tmp2=$tmp2.$ext
 
-    ($c_preprocessor "$1" | grep -v '^# ')         > "$tmp1"   \
+    # ($c_preprocessor "$1" | grep -v '^# ')         > "$tmp1"   \
+    $c_preprocessor "$1" > "$tmp1" \
     && ("$transpiler" "$tmp1" "$1") 3>&2 2>&1 1>"$output" | sed "s|^$tmp1:|$1:|g" | error_handling "$1"
 }
 
