@@ -556,7 +556,7 @@ statement
 	| compound_statement
 	    { $$ = DUP_T(Statement, Block, .b = $1); }
 	| expression_statement
-	    { $$ = DUP_T(Statement, Expr, .e = $1); }
+	    { $$ = DUP_T(Statement, Expression, .e = $1); }
 	| selection_statement
 	    { $$ = DUP_T(Statement, Selection, .s = $1); }
 	| iteration_statement

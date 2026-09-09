@@ -1,5 +1,5 @@
 prec_internal: prec_main.c prec.tab.c prec.tab.h lex.yy.c helpers/*.c helpers/*.h
-	gcc -g -Wno-unused-result --warn-no-enum-conversion -Wswitch-enum lex.yy.c prec_main.c prec.tab.c helpers/*.c -lfl -o prec_internal
+	gcc -g -Wall -Wenum-conversion -Wswitch-enum lex.yy.c prec_main.c prec.tab.c helpers/*.c -lfl -o prec_internal
 prec.tab.c prec.tab.h: prec.y
 	bison -d -v prec.y
 lex.yy.c:prec.l

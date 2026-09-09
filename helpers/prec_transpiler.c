@@ -613,6 +613,9 @@ char *type_id(struct Type *x) {
         case iptr: return strdup("iptr");
         case Void: return strdup("void");
         case Bool: return strdup("bool");
+        default:
+            assert(!"Default in type_id reached when it should not happen");
+            return NULL;
     }
 }
 
@@ -1650,6 +1653,9 @@ bool is_const_expr(struct Expr *x) {
         return false;
     case StructDerefMethod:
         return false;
+    default:
+        assert(!"Default in is_const_expr reached when it should not happen");
+        return false;
     }
 }
 
@@ -1695,6 +1701,9 @@ bool is_const_sized_type(struct Type *x) {
         return true;
     case TypeofType:
         return is_const_sized_type(x->typeof_type);
+    default:
+        assert(!"Default in is_const_sized_type reached when it should not happen");
+        return false;
     }
 }
 

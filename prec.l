@@ -5,6 +5,7 @@ E			([Ee][+-]?{D}+)
 P                       ([Pp][+-]?{D}+)
 
 %option yylineno
+%option nounput
 
 %{
 
