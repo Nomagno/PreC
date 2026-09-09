@@ -77,7 +77,7 @@
 //      & (bitwise) -> BAND
 //      Reference operator: &
 //      Dereference operator: ^
-// - +=, *=, etc, all gone
+// - *=, /=, etc, all gone except +=
 // - Gone: pre/post increment/decrement --, ++
 // - keywords gone for obvious reasons: auto, register, _Imaginary, _Complex
 
