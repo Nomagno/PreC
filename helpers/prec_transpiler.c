@@ -797,13 +797,7 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
     case i8: p_t("int8_t"); break;
     case uptr: p_t("uintptr_t"); break;
     case iptr: p_t("intptr_t"); break;
-    case Void: {
-        // refuse to qualify void types, or rather qualify as special value
-        type_buffer->base_type_qualifiers = 1 << 3;
-
-        p_t("void");
-        break;
-    }
+    case Void: p_t("void"); break;
     case Bool: p_t("_Bool"); break;
     case TypeofExpr: {
         // TODO: figure out how to reduce these typeofs to the actual type on the compiler side, when possible
@@ -865,20 +859,21 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
 char *t_str_type(struct Type *x, char *identifier, bool fun_pointer_dereferenced) {
     struct TypeBuffer *type_buffer = new_type_buffer();
 
+    if (x->tag == Void) {
+        // Void by itself MUST NOT be qualified. Compilers error out.
+        // So, we just don't allow this behaviour.
+        x = QUALIFY(x, Mut, x->source_line);
+    }
+
     t_internal_type(x, type_buffer);
-    if (type_buffer->base_type_qualifiers & (1 << 3)) {
-        // do NOT add any qualifiers to the specially marked void base type
-        ;
-    } else {
-        if (!(type_buffer->base_type_qualifiers & Mut)) {
-            p_t("const ");
-        }
-        if (type_buffer->base_type_qualifiers & Restrict) {
-            p_t("restrict ");
-        }
-        if (type_buffer->base_type_qualifiers & Volatile) {
-            p_t("volatile ");
-        }
+    if (!(type_buffer->base_type_qualifiers & Mut)) {
+        p_t("const ");
+    }
+    if (type_buffer->base_type_qualifiers & Restrict) {
+        p_t("restrict ");
+    }
+    if (type_buffer->base_type_qualifiers & Volatile) {
+        p_t("volatile ");
     }
 
     if (fun_pointer_dereferenced) {
