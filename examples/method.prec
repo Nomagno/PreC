@@ -8,7 +8,7 @@ type struct MyDataType = {
     // They do not affect the space taken up by the data type
     i32 y = 5;
     void (&)(struct MyDataType mut & self, i32 arg) add = ${
-        self->x = self->x + self->y + arg;
+        self->x += self->y + arg;
     };
 };
 

@@ -146,6 +146,7 @@ L?\"(\\.|[^\\"\n])*\"	{ count(); yylval.string_literal=strdup(yytext); return(ST
 ("}")	{ count(); return('}'); }
 ","		{ count(); return(','); }
 ":"		{ count(); return(':'); }
+"+="	{ count(); return(ASSIGN_ADDITION); }
 "="		{ count(); return('='); }
 "("		{ count(); return('('); }
 ")"		{ count(); return(')'); }

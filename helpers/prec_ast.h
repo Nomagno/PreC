@@ -42,6 +42,7 @@ enum BinOp {
     LessEqual=C('<','='),
     NotEqual=C('!','='),
     Assign='=',
+    AssignAdd=C('+','='),
     Sequence=',',
     Index='i',
 };

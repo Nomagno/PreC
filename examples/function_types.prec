@@ -7,7 +7,7 @@ type struct A = {
     struct A mut & (&)(struct A mut & self, i32 val) add_dynamic;
 } constdata {
     struct A mut & (&)(struct A mut & self, i32 val) add = ${
-        self->x = self->x + val;
+        self->x += val;
         return self;
     };
 };

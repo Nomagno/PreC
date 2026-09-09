@@ -1230,6 +1230,11 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
             p("=");
             return_type = t_expr(x->binOp.e2);
             break;
+        case AssignAdd:
+            t_expr(x->binOp.e1);
+            p("+=");
+            return_type = t_expr(x->binOp.e2);
+            break;
         case Sequence:
             t_expr(x->binOp.e1);
             p(",");

@@ -133,6 +133,8 @@
 %token ELLIPSIS
 %token C_INCLUDE
 
+%token ASSIGN_ADDITION
+
 %left LOWEST_LEFT_PRECEDENCE
 %left OR_OP
 %left AND_OP
@@ -291,6 +293,8 @@ constant_expression
 assignment_expression
 	: conditional_expression
 	    { $$ = $1; }
+	| unary_expression ASSIGN_ADDITION assignment_expression
+	    { $$ = BIN_EXPR(AssignAdd, $1, $3) }
 	| unary_expression '=' assignment_expression
 	    { $$ = BIN_EXPR(Assign, $1, $3) }
 	;
