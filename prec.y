@@ -84,7 +84,7 @@
 %type <var_list> var_list
 %type <type_definition> type_definition
 %type <declaration> declaration
-%type <declaration_list> struct_declaration_list
+%type <declaration_list> struct_declaration_list constdata_block
 
 %type <initializer> initializer compound_literal_initializer
 %type <initializer_list> initializer_list
@@ -475,12 +475,12 @@ base_type
 	    { $$ = DUP_T(Type, f64); }
     | TUPLE '(' parameter_type_list ')'
         { $$ = DUP_T(Type, Tuple, .tuple = { .member_list = $3 }); }
-    | TUPLE '(' parameter_type_list ')' CONSTDATA '{' struct_declaration_list '}'
-        { $$ = DUP_T(Type, Tuple, .tuple = { .member_list = $3, .const_data = $7 }); }
+    | TUPLE '(' parameter_type_list ')' constdata_block
+        { $$ = DUP_T(Type, Tuple, .tuple = { .member_list = $3, .const_data = $5 }); }
     | STRUCT IDENTIFIER
 	    { $$ = DUP_T(Type, Struct, .user_defined_type = { .tag_name = $2 }); }
-    | STRUCT IDENTIFIER CONSTDATA '{' struct_declaration_list '}'
-	    { $$ = DUP_T(Type, Struct, .user_defined_type = { .tag_name = $2, .const_data = $5 }); }
+    | STRUCT IDENTIFIER constdata_block
+	    { $$ = DUP_T(Type, Struct, .user_defined_type = { .tag_name = $2, .const_data = $3 }); }
     | UNION  IDENTIFIER
 	    { $$ = DUP_T(Type, Union, .user_defined_type = { .tag_name = $2 }); }
     | ENUM   IDENTIFIER
@@ -517,14 +517,19 @@ parameter_declaration
 type_definition
     : TYPE STRUCT IDENTIFIER '=' '{' struct_declaration_list '}' ';'
         { $$ = DUP_T(TypeDefinition, NewStruct, .struct_or_union_def = { .name = $3, .declarations = $6 }); }
-    | TYPE STRUCT IDENTIFIER '=' '{' struct_declaration_list '}' CONSTDATA '{' struct_declaration_list '}' ';'
-        { $$ = DUP_T(TypeDefinition, NewStruct, .struct_or_union_def = { .name = $3, .declarations = $6, .const_data = $10  }); }
+    | TYPE STRUCT IDENTIFIER '=' '{' struct_declaration_list '}' constdata_block ';'
+        { $$ = DUP_T(TypeDefinition, NewStruct, .struct_or_union_def = { .name = $3, .declarations = $6, .const_data = $8  }); }
     | TYPE UNION IDENTIFIER  '=' '{' struct_declaration_list '}' ';'
         { $$ = DUP_T(TypeDefinition, NewUnion, .struct_or_union_def = { .name = $3, .declarations = $6 }); }
     | TYPE ENUM IDENTIFIER   '=' '{' enumerator_list '}' ';'
         { $$ = DUP_T(TypeDefinition, NewEnum, .enum_def = { .name = $3, .values = $6 }); }
     | TYPE ENUM IDENTIFIER   '=' '{' enumerator_list ',' '}' ';'
         { $$ = DUP_T(TypeDefinition, NewEnum, .enum_def = { .name = $3, .values = $6 }); }
+    ;
+
+constdata_block
+    : CONSTDATA '{' struct_declaration_list '}'
+        { $$ = $3; }
     ;
 
 struct_declaration_list
