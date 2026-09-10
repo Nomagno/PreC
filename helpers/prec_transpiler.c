@@ -51,11 +51,6 @@ char *current_funname = NULL;
 SymPtr sym_table;
 TypeTablePtr type_table;
 
-// We expose the top level list of c_include directives and declarations
-// because the cleanest way to allow constdata functions to access their own type
-// is through inserting into it. Otherwise, it wouldn't be needed
-struct TopLevel *top_level_list;
-
 struct BufferList {
     size_t size;
     char *buf;
@@ -66,6 +61,10 @@ struct BufferList {
 struct BufferList *buffer_list;
 
 struct BufferList *current_buffer;
+
+#define SAVE_BUFFER() int saved_indent = global_indent_level; global_indent_level = 0; struct BufferList *saved_buffer = current_buffer;
+#define RESTORE_BUFFER() current_buffer = saved_buffer; global_indent_level = saved_indent;
+
 
 #define NEW_REFERENCE(_e, _source) DUP_T(Expr, Unary, .unOp = { .tag = Ref, .e = _e }, .source_line = _source)
 
@@ -654,10 +653,7 @@ char *register_tuple_if_needed(struct Type *x, bool *had_to_register) {
 
         // We create a new buffer to print the type to,
         // print the code to it, then restore the current buffer.
-        int saved_indent = global_indent_level;
-        global_indent_level = 0;
-
-        struct BufferList *saved_buffer = current_buffer;
+        SAVE_BUFFER();
         struct BufferList *tmp = buffer_list;
 
         buffer_list = create_buffer();
@@ -697,8 +693,7 @@ char *register_tuple_if_needed(struct Type *x, bool *had_to_register) {
         p("};");
         //NEWLINE();
 
-        current_buffer = saved_buffer;
-        global_indent_level = saved_indent;
+        RESTORE_BUFFER();
     }
 
     return type_identifier;
@@ -1043,10 +1038,7 @@ void t_initializer(struct Initializer *x, struct Type *t) {
 
         // As explanied above, we create a new buffer to print to,
         // print the code to it, then restore the current buffer.
-        int saved_indent = global_indent_level;
-        global_indent_level = 0;
-
-        struct BufferList *saved_buffer = current_buffer;
+        SAVE_BUFFER();
         struct BufferList *tmp = buffer_list;
         char *saved_funname = current_funname;
 
@@ -1075,8 +1067,7 @@ void t_initializer(struct Initializer *x, struct Type *t) {
         t_block(x->code, t->fun_pointer.param_list);
         // TODO: push the saved symbols back in
 
-        current_buffer = saved_buffer;
-        global_indent_level = saved_indent;
+        RESTORE_BUFFER();
         current_funname = saved_funname;
 
         // This will have been set to true by t_block()
@@ -1755,9 +1746,6 @@ void dispatch_constdata(char *type_name, struct DeclarationList *data, bool new_
     while (append_to_list != NULL && append_to_list->next != NULL)
         append_to_list = append_to_list->next;
 
-
-    struct TopLevel *head_of_inserted_constdata_fields = NULL;
-
     REWIND_LIST(data);
     while (data != NULL) {
         //struct Type *constdata_curr_decl_type = data->decl->type;
@@ -1836,43 +1824,32 @@ void dispatch_constdata(char *type_name, struct DeclarationList *data, bool new_
                 .source_line = data->source_line
             });
 
-            // to translate code like this,
-            // the code must be able to access the type we're
-            // dealing with in the first place,
-            // else the ergonomics make no sense.
-            // so the symbol for this must be inserted AFTER the type.
-            // this must only be done in the case of top-level types.
-            // to achieve this, we will translate the declaration AFTER the current declaration,
-            // by inserting it for top_level or translating directly.
-            // TODO: As of C23, this can be achieved for non-top-level types as well
-            //       Because of the rules that allow for limited structural typing.
-            //       Maybe make a branch of the PreC transpiler that targets C23 in the future?
-
             if (top_level && new_type) {
-                struct TopLevel *top_level_to_append = top_level_to_append =
-                            DUP_T(TopLevel, Decl,
-                                    .decl = constdata_field_decl,
-                                    .prev = top_level_list,
-                                    .source_line = constdata_field_decl->source_line
-                                );
+                // to translate code like this,
+                // the code must be able to access the type we're
+                // defining in the first place,
+                // because otherwise the ergonomics make no sense.
+                // so we defer its translation to AFTER the current type translation
+                SAVE_BUFFER();
+                struct BufferList *tmp = buffer_list;
 
-                if (head_of_inserted_constdata_fields == NULL) {
-                    struct TopLevel *saved_next = top_level_list->next;
-                    top_level_list->next = top_level_to_append;
-                    top_level_list->next->next = saved_next;
-                    head_of_inserted_constdata_fields = top_level_list->next;
-                } else {
-                    struct TopLevel *saved_next = head_of_inserted_constdata_fields->next;
-                    head_of_inserted_constdata_fields->next = top_level_to_append;
-                    head_of_inserted_constdata_fields->next->next = saved_next;
-                    head_of_inserted_constdata_fields = head_of_inserted_constdata_fields->next;
+                while (buffer_list->next != NULL) {
+                    buffer_list = buffer_list->next;
                 }
-            } else if (top_level && !new_type) {
-                // for the ergonomics to make sense in this case, we append BEFORE the current top-level unit
-                int saved_indent = global_indent_level;
-                global_indent_level = 0;
+                buffer_list->next = create_buffer();
+                current_buffer = buffer_list->next;
 
-                struct BufferList *saved_buffer = current_buffer;
+                t_declaration(constdata_field_decl, false /*freeform*/, true /*top_level*/);
+
+                RESTORE_BUFFER();
+                buffer_list = tmp;
+            } else if (top_level && !new_type) {
+                // to translate code like this,
+                // the initializers must be able to access
+                // the new constdata added to an existing type,
+                // because otherwise the ergonomics make no sense.
+                // so we make its translation happen BEFORE the type translation
+                SAVE_BUFFER();
                 struct BufferList *tmp = buffer_list;
 
                 buffer_list = create_buffer();
@@ -1881,8 +1858,7 @@ void dispatch_constdata(char *type_name, struct DeclarationList *data, bool new_
 
                 t_declaration(constdata_field_decl, false /*freeform*/, true /*top_level*/);
 
-                current_buffer = saved_buffer;
-                global_indent_level = saved_indent;
+                RESTORE_BUFFER();
             } else {
                 t_declaration(constdata_field_decl, false /*freeform*/, false /*top_level*/);
             }
@@ -2464,7 +2440,7 @@ void transpile(struct TopLevel *top) {
 
     sym_table = new_symbol_table();
     type_table = new_type_table();
-    top_level_list = top;
+    struct TopLevel *top_level_list = top;
     REWIND_LIST(top_level_list);
     while (top_level_list != NULL) {
         switch (top_level_list->tag) {
