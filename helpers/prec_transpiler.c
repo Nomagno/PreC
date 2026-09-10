@@ -52,6 +52,20 @@ char *current_funname = NULL;
 SymPtr sym_table;
 TypeTablePtr type_table;
 
+void check_empty_tables(void) {
+    while (sym_table->next != NULL) {
+        //Verify all local types where removed
+        assert(sym_table->next->scope_level == 0);
+        sym_table = sym_table->next;
+    }
+
+    while (type_table->next != NULL) {
+        //Verify all local symbols were removed
+        assert(type_table->next->scope_level == 0);
+        type_table = type_table->next;
+    }
+}
+
 struct BufferList {
     size_t size;
     char *buf;
@@ -63,18 +77,42 @@ struct BufferList *buffer_list;
 
 struct BufferList *current_buffer;
 
-#define SAVE_BUFFER() int saved_indent = global_indent_level; int saved_scope = global_scope_level; global_indent_level = 0; struct BufferList *saved_buffer = current_buffer;
-#define RESTORE_BUFFER() current_buffer = saved_buffer; global_indent_level = saved_indent; global_scope_level = saved_scope;
+#define SAVE_BUFFER()\
+    int saved_indent = global_indent_level; \
+    int saved_scope = global_scope_level; \
+    global_indent_level = 0; \
+    struct BufferList *saved_buffer = current_buffer;
 
-#define ENTER_SCOPE() global_scope_level += 1;
-#define EXIT_SCOPE() global_scope_level -= 1; assert(global_scope_level >= 0); cull_types(type_table, global_scope_level+1); cull_symbols(sym_table, global_scope_level+1);
+#define RESTORE_BUFFER()\
+    current_buffer = saved_buffer; \
+    global_indent_level = saved_indent; \
+    global_scope_level = saved_scope;
+
+#define ENTER_SCOPE(_source_line)\
+    global_scope_level += 1; \
+    /*fprintf(stderr, "Entering scope at line %d\n", _source_line);*/
+
+#define EXIT_SCOPE(_source_line)\
+    global_scope_level -= 1; \
+    /*fprintf(stderr, "Exiting scope at line %d\n", _source_line);*/ \
+    assert(global_scope_level >= 0); \
+    cull_types(type_table, global_scope_level+1); \
+    cull_symbols(sym_table, global_scope_level+1);
 
 
 #define NEW_REFERENCE(_e, _source) DUP_T(Expr, Unary, .unOp = { .tag = Ref, .e = _e }, .source_line = _source)
 
 #define NEW_CAST(_e, _t, _source) DUP_T(Expr, Cast, .cast = { .type = _t, .e = _e }, .source_line = _source)
 
-#define NEW_COMPOUND_LITERAL(_e, _t, _source) DUP_T(Expr, CompoundLiteral, .compound_literal = { .type = _t, .init = DUP_T(Initializer, Data, .data = DUP((struct InitializerList){ .current = DUP_T(Initializer, Expr, .expr = _e, .source_line = _source) , .source_line = _source }), .source_line = _source)}, .source_line = _source)
+#define NEW_COMPOUND_LITERAL(_e, _t, _source)\
+    DUP_T(Expr, CompoundLiteral, .compound_literal = {\
+        .type = _t, \
+        .init = DUP_T(Initializer, Data, \
+            .data = DUP((struct InitializerList){ \
+                .current = DUP_T(Initializer, Expr, .expr = _e, .source_line = _source), \
+                .source_line = _source }), \
+            .source_line = _source)}, \
+        .source_line = _source)
 
 #define NEW_INT(_x, _source) DUP_T(Expr, Int, .int_num = _x, .source_line = _source)
 
@@ -94,7 +132,11 @@ struct BufferList *current_buffer;
 
 #define REWIND_LIST(_name) do { while (_name->prev != NULL) { _name = _name->prev; } } while(0)
 
-#define DISCARD_QUALIFIERS(_type) do { if (_type && _type->tag == Qualifier) _type = _type->qualifier.t; } while(0)
+#define DISCARD_QUALIFIERS(_type) do { \
+        if (_type && _type->tag == Qualifier) \
+            _type = _type->qualifier.t; \
+        } \
+    while(0)
 
 struct BufferList *create_buffer(void) {
     struct BufferList *retval = calloc(sizeof(struct BufferList), 1);
@@ -924,7 +966,7 @@ void t_block(struct Block *b, struct TypeParamList *param_list) {
     p("{");
     NEWLINE();
 
-    ENTER_SCOPE();
+    ENTER_SCOPE(b->source_line);
 
     global_indent_level += 1;
 
@@ -978,7 +1020,7 @@ void t_block(struct Block *b, struct TypeParamList *param_list) {
     p("}");
     NEWLINE();
 
-    EXIT_SCOPE();
+    EXIT_SCOPE(b->source_line);
 }
 
 // The type can be NULL
@@ -1069,9 +1111,14 @@ void t_initializer(struct Initializer *x, struct Type *t) {
         p("%s", decl);
         // print the code itself
 
-        // TODO: save the symbols up to the global marker, pop them out of the stack
+        // TODO: save the symbols and types up to the global marker, pop them out of the stack
+        //check_empty_tables();
+
         t_block(x->code, t->fun_pointer.param_list);
+
+        //check_empty_tables();
         // TODO: push the saved symbols back in
+
 
         RESTORE_BUFFER();
         current_funname = saved_funname;
@@ -2124,7 +2171,7 @@ void t_statement(struct Statement *stat) {
     case Selection:
         switch (stat->s->tag) {
         case If:
-            ENTER_SCOPE();
+            ENTER_SCOPE(stat->source_line);
             if (stat->s->simple_if.decl != NULL) {
                 tabs();
                 p("{");
@@ -2165,21 +2212,19 @@ void t_statement(struct Statement *stat) {
                 NEWLINE();
             }
 
-            EXIT_SCOPE();
+            EXIT_SCOPE(stat->source_line);
             break;
         case IfElse:
             if (stat->s->if_else.decl != NULL) {
                 tabs();
                 p("{");
                 NEWLINE();
-                ENTER_SCOPE();
+                ENTER_SCOPE(stat->s->if_else.decl->source_line);
                 set_src(stat->s->source_line);
 
                 global_indent_level += 1;
                 t_declaration(stat->s->if_else.decl, false, false);
             }
-
-            ENTER_SCOPE();
 
             tabs();
             p("if (")
@@ -2193,7 +2238,7 @@ void t_statement(struct Statement *stat) {
             p(")");
             NEWLINE();
 
-
+            ENTER_SCOPE(stat->s->if_else.action_true->source_line);
             if (stat->s->if_else.action_true->tag == Block) {
                 t_statement(stat->s->if_else.action_true);
             } else {
@@ -2201,11 +2246,14 @@ void t_statement(struct Statement *stat) {
                 t_statement(stat->s->if_else.action_true);
                 global_indent_level -= 1;
             }
+            EXIT_SCOPE(stat->s->if_else.action_true->source_line);
 
             set_src(stat->s->if_else.action_false->source_line);
             tabs();
             p("else");
             NEWLINE();
+
+            ENTER_SCOPE(stat->s->if_else.action_false->source_line);
             if (stat->s->if_else.action_false->tag == Block ||
                 (stat->s->if_else.action_false->tag == Selection &&
                     (stat->s->if_else.action_false->s->tag == If
@@ -2216,6 +2264,7 @@ void t_statement(struct Statement *stat) {
                 t_statement(stat->s->if_else.action_false);
                 global_indent_level -= 1;
             }
+            EXIT_SCOPE(stat->s->if_else.action_false->source_line);
 
 
             if (stat->s->if_else.decl != NULL) {
@@ -2227,13 +2276,11 @@ void t_statement(struct Statement *stat) {
                 p("}");
                 NEWLINE();
 
-                EXIT_SCOPE();
+                EXIT_SCOPE(stat->s->if_else.decl->source_line);
             }
-
-            EXIT_SCOPE();
             break;
         case Switch:
-            ENTER_SCOPE();
+            ENTER_SCOPE(stat->source_line);
             if (stat->s->switch_stat.decl != NULL) {
                 tabs();
                 p("{");
@@ -2270,8 +2317,10 @@ void t_statement(struct Statement *stat) {
                 p("}");
                 NEWLINE();
             }
+
+            EXIT_SCOPE(stat->source_line);
+            break;
         }
-        EXIT_SCOPE();
         break;
     case Jump:
         switch (stat->j->tag) {
@@ -2356,7 +2405,7 @@ void t_statement(struct Statement *stat) {
     case Iteration:
         switch (stat->i->tag) {
         case While:
-            ENTER_SCOPE();
+            ENTER_SCOPE(stat->source_line);
             tabs();
             p("while (");
             t_expr(stat->i->while_dowhile_stat.expr);
@@ -2370,10 +2419,10 @@ void t_statement(struct Statement *stat) {
                 global_indent_level -= 1;
             }
 
-            EXIT_SCOPE();
+            EXIT_SCOPE(stat->source_line);
             break;
         case DoWhile:
-            ENTER_SCOPE();
+            ENTER_SCOPE(stat->source_line);
             tabs();
             p("do");
             NEWLINE();
@@ -2390,10 +2439,10 @@ void t_statement(struct Statement *stat) {
             p(");");
             NEWLINE();
 
-            EXIT_SCOPE();
+            EXIT_SCOPE(stat->source_line);
             break;
         case For_Decl:
-            ENTER_SCOPE();
+            ENTER_SCOPE(stat->source_line);
             tabs();
             p("for (");
 
@@ -2425,10 +2474,10 @@ void t_statement(struct Statement *stat) {
                 global_indent_level -= 1;
             }
 
-            EXIT_SCOPE();
+            EXIT_SCOPE(stat->source_line);
             break;
         case For_Expr:
-            ENTER_SCOPE();
+            ENTER_SCOPE(stat->source_line);
             tabs();
             p("for (");
             t_expr(stat->i->for_stat_expr.init);
@@ -2448,15 +2497,23 @@ void t_statement(struct Statement *stat) {
                 global_indent_level -= 1;
             }
 
-            EXIT_SCOPE();
+            EXIT_SCOPE(stat->source_line);
             break;
         }
     }
 }
 
-#define RESET_TRANSLATION_DATA() buffer_list = NULL; current_buffer = NULL; global_indent_level = 0; buffer_list = create_buffer(); current_buffer = buffer_list;
+#define RESET_TRANSLATION_DATA()\
+    buffer_list = NULL; \
+    current_buffer = NULL; \
+    global_indent_level = 0; \
+    buffer_list = create_buffer(); \
+    current_buffer = buffer_list;
 
-#define CLEAR_TRANSLATION_DATA() buffer_list = NULL; current_buffer = NULL; global_indent_level = 0;
+#define CLEAR_TRANSLATION_DATA()\
+    buffer_list = NULL; \
+    current_buffer = NULL; \
+    global_indent_level = 0;
 
 
 
@@ -2511,4 +2568,6 @@ void transpile(struct TopLevel *top) {
         }
         top_level_list = top_level_list->next;
     }
+
+    check_empty_tables();
 }

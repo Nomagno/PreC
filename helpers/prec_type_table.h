@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <assert.h>
 #include "prec_ast.h"
 
 typedef struct TypeEntry *TypeTablePtr;
@@ -49,6 +50,16 @@ static TypeTablePtr fetch_type(TypeTablePtr table, char *name) {
 }
 
 static void cull_types(TypeTablePtr table, unsigned scope_to_delete) {
-    /*TODO: Implement*/
+    assert(scope_to_delete > 0);
+    
+    while (table->next != NULL) {
+        if (table->next->scope_level == scope_to_delete) {
+            TypeTablePtr del = table->next;
+            table->next = table->next->next;
+            free(del);
+        } else {
+            table = table->next;
+        }
+    }
 }
 #endif

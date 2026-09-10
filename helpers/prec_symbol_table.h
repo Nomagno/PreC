@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include <assert.h>
 #include "prec_ast.h"
 
 typedef struct Symbol *SymPtr;
@@ -45,6 +46,30 @@ static struct Type *fetch_symbol_type(SymPtr table, char *name) {
 }
 
 static void cull_symbols(SymPtr table, unsigned scope_to_delete) {
-    /*TODO: Implement*/
+    assert(scope_to_delete > 0);
+    
+    while (table->next != NULL) {
+        if (table->next->scope_level == scope_to_delete) {
+            SymPtr del = table->next;
+            table->next = table->next->next;
+            free(del);
+        } else {
+            table = table->next;
+        }
+    }
 }
+
+/*static SymPtr extract_all_nonzero_scope_symbols(SymPtr table) {
+    assert(scope_to_delete > 0);
+    
+    while (table->next != NULL) {
+        if (table->next->scope_level == scope_to_delete) {
+            SymPtr del = table->next;
+            table->next = table->next->next;
+            free(del);
+        } else {
+            table = table->next;
+        }
+    }
+}*/
 #endif
