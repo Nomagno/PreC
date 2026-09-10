@@ -91,6 +91,7 @@ int real_line_number = -1;
 "struct"		{ count(); return(STRUCT); }
 "constdata"		{ count(); return(CONSTDATA); }
 "unique"		{ count(); return(UNIQUE); }
+"local"		    { count(); return(LOCAL); }
 "switch"		{ count(); return(SWITCH); }
 "union"			{ count(); return(UNION); }
 "volatile"		{ count(); return(VOLATILE); }

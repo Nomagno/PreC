@@ -649,7 +649,7 @@ char *register_tuple_if_needed(struct Type *x, bool *had_to_register) {
 
         insert_type(type_table, type_identifier,
                     /*TODO: construct a proper entry for enhanced type inference*/ NULL, NULL,
-                    global_indent_level);
+                    true /*top_level*/);
 
         // We create a new buffer to print the type to,
         // print the code to it, then restore the current buffer.
@@ -826,7 +826,7 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
         if (x->tag == Struct) {
             p_t("struct ");
             if (x->user_defined_type.const_data != NULL)
-                dispatch_constdata(x->user_defined_type.tag_name, x->user_defined_type.const_data, false /*new_type*/, /*TODO: should this be hardcoded?*/ true /*top_level*/);
+                dispatch_constdata(x->user_defined_type.tag_name, x->user_defined_type.const_data, false /*new_type*/, /*``local constdata'' auto-overrides this to false*/ true /*top_level*/);
         } else {
             p_t("union ");
         }
@@ -838,7 +838,7 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
         bool had_to_register;
         char *type_identifier = register_tuple_if_needed(x, &had_to_register);
         if (x->tuple.const_data != NULL)
-            dispatch_constdata(type_id(x), x->tuple.const_data, had_to_register /*new_type*/, /*TODO: should this be hardcoded?*/ true /*top_level*/);
+            dispatch_constdata(type_id(x), x->tuple.const_data, had_to_register /*new_type*/, /*``local constdata'' auto-overrides this to false*/ true /*top_level*/);
         p_t("struct %s ", type_identifier);
         break;
     case Enum:
@@ -1747,6 +1747,16 @@ void dispatch_constdata(char *type_name, struct DeclarationList *data, bool new_
         append_to_list = append_to_list->next;
 
     REWIND_LIST(data);
+
+    /*If it's a ``local constdata'' block, only create the variables locally*/
+    if (data->starts_local_block)
+        top_level = false;
+
+    /*If it's a locally-defined struct type, we can not append to its constdata globally*/
+    if (entry->top_level == false) {
+        top_level = false;
+    }
+
     while (data != NULL) {
         //struct Type *constdata_curr_decl_type = data->decl->type;
         struct VarList *vars_node = data->decl->vars;
@@ -1994,7 +2004,7 @@ void t_typedefinition(struct TypeDefinition *tdef, bool top_level) {
             // valid programs at least
             insert_type(type_table, tdef->struct_or_union_def.name,
                         node_regulardata, NULL,
-                        global_indent_level);
+                        top_level);
             // Currently, constdata not supported for structs
             // declared along with variables in the same decl,
             // mostly because it's annoying to implement

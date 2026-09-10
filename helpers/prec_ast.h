@@ -343,6 +343,7 @@ struct DeclarationList {
     struct DeclarationList *next;
     unsigned source_line;
     _Bool unique;
+    _Bool starts_local_block;
 };
 
 struct Block {

@@ -129,7 +129,7 @@
 
 %token EXTERN STATIC RESTRICT MUT VOLATILE
 %token BOOL UPTR IPTR U8 I8 U16 I16 U32 I32 U64 I64 F32 F64 VOID
-%token STRUCT UNION ENUM CONSTDATA UNIQUE
+%token STRUCT UNION ENUM CONSTDATA UNIQUE LOCAL
 %token ELLIPSIS
 %token C_INCLUDE
 
@@ -530,6 +530,8 @@ type_definition
 constdata_block
     : CONSTDATA '{' struct_declaration_list '}'
         { $$ = $3; }
+    | LOCAL CONSTDATA '{' struct_declaration_list '}'
+        { $$ = $4; while ($$->prev != NULL) { $$ = $$->prev; }     $$->starts_local_block = 1; while ($$->next != NULL) { $$ = $$->next; }  }
     ;
 
 struct_declaration_list
