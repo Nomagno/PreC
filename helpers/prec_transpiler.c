@@ -46,6 +46,7 @@ fclose(f);
 
 unsigned global_identifier_counter = 0;
 int global_indent_level = 0;
+int global_scope_level = 0;
 char *current_funname = NULL;
 
 SymPtr sym_table;
@@ -62,8 +63,11 @@ struct BufferList *buffer_list;
 
 struct BufferList *current_buffer;
 
-#define SAVE_BUFFER() int saved_indent = global_indent_level; global_indent_level = 0; struct BufferList *saved_buffer = current_buffer;
-#define RESTORE_BUFFER() current_buffer = saved_buffer; global_indent_level = saved_indent;
+#define SAVE_BUFFER() int saved_indent = global_indent_level; int saved_scope = global_scope_level; global_indent_level = 0; struct BufferList *saved_buffer = current_buffer;
+#define RESTORE_BUFFER() current_buffer = saved_buffer; global_indent_level = saved_indent; global_scope_level = saved_scope;
+
+#define ENTER_SCOPE() global_scope_level += 1;
+#define EXIT_SCOPE() global_scope_level -= 1; assert(global_scope_level >= 0); cull_types(type_table, global_scope_level+1); cull_symbols(sym_table, global_scope_level+1);
 
 
 #define NEW_REFERENCE(_e, _source) DUP_T(Expr, Unary, .unOp = { .tag = Ref, .e = _e }, .source_line = _source)
@@ -647,9 +651,9 @@ char *register_tuple_if_needed(struct Type *x, bool *had_to_register) {
         // The name is unique and given by the type_id() function.
         // This gives the effect of all possible tuples appearing to be defined: structural typing.
 
-        insert_type(type_table, type_identifier,
+        push_type(type_table, type_identifier,
                     /*TODO: construct a proper entry for enhanced type inference*/ NULL, NULL,
-                    true /*top_level*/);
+                    true /*top_level*/, global_scope_level);
 
         // We create a new buffer to print the type to,
         // print the code to it, then restore the current buffer.
@@ -920,6 +924,8 @@ void t_block(struct Block *b, struct TypeParamList *param_list) {
     p("{");
     NEWLINE();
 
+    ENTER_SCOPE();
+
     global_indent_level += 1;
 
     // if this block is part of a function, register the parameters in the symbol table
@@ -927,7 +933,7 @@ void t_block(struct Block *b, struct TypeParamList *param_list) {
         REWIND_LIST(param_list);
         while (param_list != NULL) {
             if (param_list->param != NULL && param_list->param->name != NULL) {
-                push_symbol(sym_table, param_list->param->name, param_list->param->type, false /*is_global*/);
+                push_symbol(sym_table, param_list->param->name, param_list->param->type, false /*top_level*/, global_scope_level);
             }
             param_list = param_list->next;
         }
@@ -971,6 +977,8 @@ void t_block(struct Block *b, struct TypeParamList *param_list) {
      tabs();
     p("}");
     NEWLINE();
+
+    EXIT_SCOPE();
 }
 
 // The type can be NULL
@@ -1062,8 +1070,6 @@ void t_initializer(struct Initializer *x, struct Type *t) {
         // print the code itself
 
         // TODO: save the symbols up to the global marker, pop them out of the stack
-        // new global marker
-        push_symbol(sym_table, NULL, NULL, true);
         t_block(x->code, t->fun_pointer.param_list);
         // TODO: push the saved symbols back in
 
@@ -1999,15 +2005,9 @@ void t_typedefinition(struct TypeDefinition *tdef, bool top_level) {
         struct DeclarationList *node_constdata = tdef->struct_or_union_def.const_data;
 
         if (tdef->struct_or_union_def.name && node_regulardata) {
-            // TODO: make sure we cull types every time we exit a scope,
-            // for now we just insert, this won't fail to compile any
-            // valid programs at least
-            insert_type(type_table, tdef->struct_or_union_def.name,
+            push_type(type_table, tdef->struct_or_union_def.name,
                         node_regulardata, NULL,
-                        top_level);
-            // Currently, constdata not supported for structs
-            // declared along with variables in the same decl,
-            // mostly because it's annoying to implement
+                        top_level, global_scope_level);
 
             if (node_constdata != NULL) {
                 dispatch_constdata(tdef->struct_or_union_def.name, node_constdata, true /*new_type*/, top_level);
@@ -2058,10 +2058,7 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
         if (node->decl->val != NULL) {
             // top level functions with no qualifiers and a function initializer get implicitly converted to declarations/definitions
             if (top_level && decl->type->tag == FunPointer && node->decl->val->tag == Code) {
-                // Empty marker on symbol stack
-                push_symbol(sym_table, NULL, NULL, true /*is_global*/);
-
-                push_symbol(sym_table, node->decl->name, decl->type, top_level);
+                push_symbol(sym_table, node->decl->name, decl->type, top_level, global_scope_level);
 
                 char *saved_funname = current_funname;
 
@@ -2075,10 +2072,7 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
 
                 current_funname = saved_funname;
             } else {
-                // TODO: make sure to cull symbols every time a scope is exited,
-                // for now we just insert, this won't fail to compile any
-                // valid programs at least
-                push_symbol(sym_table, node->decl->name, decl->type, top_level);
+                push_symbol(sym_table, node->decl->name, decl->type, top_level, global_scope_level);
 
                 p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, false));
                 p(" = ");
@@ -2090,17 +2084,14 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
             }
         } else {
             if (top_level && decl->type->tag == FunPointer) {
-                push_symbol(sym_table, node->decl->name, decl->type, top_level);
+                push_symbol(sym_table, node->decl->name, decl->type, top_level, global_scope_level);
 
                 p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, true));
 
                 if (freeform) { p("; "); }
                 else          { p(";"); NEWLINE(); }
             } else {
-                // TODO: make sure to cull symbols every time a scope is exited,
-                // for now we just insert, this won't fail to compile most
-                // valid programs at least
-                push_symbol(sym_table, node->decl->name, decl->type, top_level);
+                push_symbol(sym_table, node->decl->name, decl->type, top_level, global_scope_level);
 
                 p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, false));
 
@@ -2133,6 +2124,7 @@ void t_statement(struct Statement *stat) {
     case Selection:
         switch (stat->s->tag) {
         case If:
+            ENTER_SCOPE();
             if (stat->s->simple_if.decl != NULL) {
                 tabs();
                 p("{");
@@ -2172,17 +2164,22 @@ void t_statement(struct Statement *stat) {
                 p("}");
                 NEWLINE();
             }
+
+            EXIT_SCOPE();
             break;
         case IfElse:
             if (stat->s->if_else.decl != NULL) {
                 tabs();
                 p("{");
                 NEWLINE();
+                ENTER_SCOPE();
                 set_src(stat->s->source_line);
 
                 global_indent_level += 1;
                 t_declaration(stat->s->if_else.decl, false, false);
             }
+
+            ENTER_SCOPE();
 
             tabs();
             p("if (")
@@ -2229,10 +2226,14 @@ void t_statement(struct Statement *stat) {
                 tabs();
                 p("}");
                 NEWLINE();
+
+                EXIT_SCOPE();
             }
 
+            EXIT_SCOPE();
             break;
         case Switch:
+            ENTER_SCOPE();
             if (stat->s->switch_stat.decl != NULL) {
                 tabs();
                 p("{");
@@ -2270,6 +2271,7 @@ void t_statement(struct Statement *stat) {
                 NEWLINE();
             }
         }
+        EXIT_SCOPE();
         break;
     case Jump:
         switch (stat->j->tag) {
@@ -2354,6 +2356,7 @@ void t_statement(struct Statement *stat) {
     case Iteration:
         switch (stat->i->tag) {
         case While:
+            ENTER_SCOPE();
             tabs();
             p("while (");
             t_expr(stat->i->while_dowhile_stat.expr);
@@ -2366,8 +2369,11 @@ void t_statement(struct Statement *stat) {
                 t_statement(stat->i->while_dowhile_stat.stat);
                 global_indent_level -= 1;
             }
+
+            EXIT_SCOPE();
             break;
         case DoWhile:
+            ENTER_SCOPE();
             tabs();
             p("do");
             NEWLINE();
@@ -2383,8 +2389,11 @@ void t_statement(struct Statement *stat) {
             t_expr(stat->i->while_dowhile_stat.expr);
             p(");");
             NEWLINE();
+
+            EXIT_SCOPE();
             break;
         case For_Decl:
+            ENTER_SCOPE();
             tabs();
             p("for (");
 
@@ -2416,8 +2425,10 @@ void t_statement(struct Statement *stat) {
                 global_indent_level -= 1;
             }
 
+            EXIT_SCOPE();
             break;
         case For_Expr:
+            ENTER_SCOPE();
             tabs();
             p("for (");
             t_expr(stat->i->for_stat_expr.init);
@@ -2437,6 +2448,7 @@ void t_statement(struct Statement *stat) {
                 global_indent_level -= 1;
             }
 
+            EXIT_SCOPE();
             break;
         }
     }
