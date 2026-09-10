@@ -129,7 +129,7 @@
 
 %token EXTERN STATIC RESTRICT MUT VOLATILE
 %token BOOL UPTR IPTR U8 I8 U16 I16 U32 I32 U64 I64 F32 F64 VOID
-%token STRUCT UNION ENUM CONSTDATA
+%token STRUCT UNION ENUM CONSTDATA UNIQUE
 %token ELLIPSIS
 %token C_INCLUDE
 
@@ -532,6 +532,10 @@ struct_declaration_list
 	    { $$ = DUP((struct DeclarationList){ .decl = $1, .next = NULL }); }
 	| struct_declaration_list declaration ';'
 	    { $1->next = DUP((struct DeclarationList){ .decl = $2, .prev = $1, .next = NULL }); $$ = $1->next; }
+	| UNIQUE declaration ';'
+	    { $$ = DUP((struct DeclarationList){ .decl = $2, .next = NULL, .unique = 1 }); }
+	| struct_declaration_list UNIQUE declaration ';'
+	    { $1->next = DUP((struct DeclarationList){ .decl = $3, .prev = $1, .next = NULL, .unique = 1 }); $$ = $1->next; }
 	| struct_declaration_list ';'
 	    { $$ = $1; }
 	;

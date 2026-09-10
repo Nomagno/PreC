@@ -1765,6 +1765,13 @@ void dispatch_constdata(char *type_name, struct DeclarationList *data, bool new_
 
             if (!is_impl && var_in_list(name, entry->constdata)) {
                 // Do not append a variable it is already present
+
+                // If it is declared as 'unique', then error out.
+                if (data->unique) {
+                    fprintf(stderr, "%s:%d:%d: Compiler error: Attempted to add unique constdata variable %s to type %s but it already existed.\n",
+                            FILENAME_GRACEFUL, data->source_line, 1, name, type_name);
+                    exit(1);
+                }
                 vars_node = vars_node->next;
                 continue;
             } else if (!is_impl) {

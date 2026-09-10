@@ -90,6 +90,7 @@ int real_line_number = -1;
 "type"		{ count(); return(TYPE); }
 "struct"		{ count(); return(STRUCT); }
 "constdata"		{ count(); return(CONSTDATA); }
+"unique"		{ count(); return(UNIQUE); }
 "switch"		{ count(); return(SWITCH); }
 "union"			{ count(); return(UNION); }
 "volatile"		{ count(); return(VOLATILE); }

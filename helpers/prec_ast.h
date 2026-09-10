@@ -342,6 +342,7 @@ struct DeclarationList {
     struct DeclarationList *prev;
     struct DeclarationList *next;
     unsigned source_line;
+    _Bool unique;
 };
 
 struct Block {
