@@ -1534,11 +1534,36 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
             }
 
             if (type_name != NULL) {
+                // complete type inference (pass down the type of the access as return_type)
+                // using the type table too
+
                 TypeTablePtr entry = fetch_type(type_table, type_name);
                 struct DeclarationList *decls = entry->regulardata;
-                // TODO: complete type inference (pass down the type of the access as return_type)
-                //       using the type table too
-                // return_type = ...;
+
+                bool found_var = false;
+
+                assert(decls != NULL);
+                REWIND_LIST(decls);
+                while (!found_var && decls != NULL) {
+                    struct Type *type = decls->decl->type;
+                    struct VarList *vars = decls->decl->vars;
+
+                    assert(vars != NULL);
+                    REWIND_LIST(vars);
+                    while (!found_var && vars != NULL) {
+                        //fprintf(stderr, "checking %s", vars->decl->name);
+                        if (vars->decl->name != NULL && strcmp(vars->decl->name, x->struct_access_deref.member) == 0) {
+                            found_var = true;
+                            //fprintf(stderr, " match %s", t_str_type(type, NULL, false));
+                            return_type = type;
+                        }
+                        //fprintf(stderr, "\n");
+
+                        vars = vars->next;
+                    }
+                    decls = decls->next;
+                }
+                //fprintf(stderr, "\n");
             }
 
             p("%s", x->struct_access_deref.member);
@@ -1628,11 +1653,32 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
             }
 
             if (type_name != NULL) {
+                // complete type inference (pass down the type of the access as return_type)
+                // using the type table too
+
                 TypeTablePtr entry = fetch_type(type_table, type_name);
                 struct DeclarationList *decls = entry->regulardata;
-                // TODO: complete type inference (pass down the type of the access as return_type)
-                //       using the type table too
-                // return_type = ...;
+
+                bool found_var = false;
+
+                assert(decls != NULL);
+                REWIND_LIST(decls);
+                while (!found_var && decls != NULL) {
+                    struct Type *type = decls->decl->type;
+                    struct VarList *vars = decls->decl->vars;
+
+                    assert(vars != NULL);
+                    REWIND_LIST(vars);
+                    while (!found_var && vars != NULL) {
+                        if (vars->decl->name != NULL && strcmp(vars->decl->name, x->struct_access_deref.member) == 0) {
+                            found_var = true;
+                            return_type = type;
+                        }
+
+                        vars = vars->next;
+                    }
+                    decls = decls->next;
+                }
             }
 
             p("%s", x->struct_access_deref.member);
@@ -1994,6 +2040,8 @@ void dispatch_constdata(char *type_name, struct DeclarationList *data, bool new_
 }
 
 void t_typedefinition(struct TypeDefinition *tdef, bool top_level) {
+    set_src(tdef->source_line);
+
     switch(tdef->tag) {
     case NewStruct:
     case NewUnion:

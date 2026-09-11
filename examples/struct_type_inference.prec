@@ -1,0 +1,13 @@
+i32 (&)(void) main = ${
+    type struct B = {
+        i32 x;
+    } constdata {
+        i32 k = 5;
+    };
+    type struct A = {
+        struct B var;
+    };
+
+    struct A var;
+    var.var.k;
+};
