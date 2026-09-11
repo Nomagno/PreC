@@ -1111,13 +1111,61 @@ void t_initializer(struct Initializer *x, struct Type *t) {
         p("%s", decl);
         // print the code itself
 
-        // TODO: save the symbols and types up to the global marker, pop them out of the stack
-        //check_empty_tables();
+        // save the symbols and types up to the global marker, pop them out of the stack
+        SymPtr       tmp_s = new_symbol_table();
+        SymPtr s_clone = sym_table;
+        while (sym_table->next != NULL) {
+            if (sym_table->next->scope_level != 0) {
+                SymPtr saved_next = sym_table->next->next;
+                SymPtr tmp_tmp_s = tmp_s;
+                while (tmp_tmp_s->next != NULL)
+                    tmp_tmp_s = tmp_tmp_s->next;
+                tmp_tmp_s->next = sym_table->next;
+                tmp_tmp_s->next->next = NULL;
+                sym_table->next = saved_next;
+            } else {
+                sym_table = sym_table->next;
+            }
+        }
+        sym_table = s_clone;
 
+        TypeTablePtr       tmp_t = new_type_table();
+        TypeTablePtr t_clone = type_table;
+        while (type_table->next != NULL) {
+            if (type_table->next->scope_level != 0) {
+                TypeTablePtr saved_next = type_table->next->next;
+                TypeTablePtr tmp_tmp_t = tmp_t;
+                while (tmp_tmp_t->next != NULL)
+                    tmp_tmp_t = tmp_tmp_t->next;
+                tmp_tmp_t->next = type_table->next;
+                tmp_tmp_t->next->next = NULL;
+                type_table->next = saved_next;
+            } else {
+                type_table = type_table->next;
+            }
+        }
+        type_table = t_clone;
+
+
+
+
+        check_empty_tables();
         t_block(x->code, t->fun_pointer.param_list);
+        check_empty_tables();
 
-        //check_empty_tables();
-        // TODO: push the saved symbols back in
+
+
+
+        // push the saved symbols and types back in
+        SymPtr tmp_s_orig = tmp_s;
+        while (tmp_s->next != NULL) tmp_s = tmp_s->next;
+        tmp_s->next = sym_table->next;
+        sym_table->next = tmp_s_orig->next;
+
+        TypeTablePtr tmp_t_orig = tmp_t;
+        while (tmp_t->next != NULL) tmp_t = tmp_t->next;
+        tmp_t->next = type_table->next;
+        type_table->next = tmp_t_orig->next;
 
 
         RESTORE_BUFFER();
@@ -2046,6 +2094,9 @@ void t_typedefinition(struct TypeDefinition *tdef, bool top_level) {
         break;
     }
 
+    set_src(tdef->source_line);
+    p(";");
+
 
     if (tdef->tag == NewStruct) {
         struct DeclarationList *node_regulardata = tdef->struct_or_union_def.declarations;
@@ -2057,13 +2108,12 @@ void t_typedefinition(struct TypeDefinition *tdef, bool top_level) {
                         top_level, global_scope_level);
 
             if (node_constdata != NULL) {
+                set_src(node_constdata->source_line);
                 dispatch_constdata(tdef->struct_or_union_def.name, node_constdata, true /*new_type*/, top_level);
             }
         }
     }
 
-    set_src(tdef->source_line);
-    p(";");
 }
 
 /*freeform: no newlines and no indents*/
