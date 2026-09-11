@@ -689,8 +689,65 @@ char *register_tuple_if_needed(struct Type *x, bool *had_to_register) {
         // The name is unique and given by the type_id() function.
         // This gives the effect of all possible tuples appearing to be defined: structural typing.
 
+        //construct a proper regulardata entry for enhanced type inference
+        struct DeclarationList *tuple_declaration = NULL;
+        {
+            struct TypeParamList *node = x->tuple.member_list;
+            REWIND_LIST(node);
+            unsigned counter = 0;
+            while (node != NULL) {
+                assert(node->param != NULL);
+                set_src(node->param->source_line);
+
+                bool is_impl = false;
+
+                char *member_name = node->param->name;
+                if (member_name == NULL) {
+                    // Unnamed tuple members get the name _0 if in first position, _1 if in second, etc.
+                    asprintf(&member_name, "_%d", counter);
+                } else {
+                    is_impl = strcmp(member_name, "__impl__") == 0;
+                }
+
+                if (is_impl) {
+                    // The "__impl__" variable isn't actually translated, it's only used for its constdata-definition side effects
+                    t_str_type(node->param->type, NULL, false);
+                } else {
+                    struct DeclarationList *to_be_appended =
+                        DUP((struct DeclarationList) {
+                            .decl = DUP((struct Declaration) {
+                                .class = None,
+                                .type = node->param->type,
+                                DUP((struct VarList){ .source_line = node->param->source_line,
+                                    .decl= DUP((struct VarDecl) {
+                                                    .name = member_name,
+                                                    .val = NULL,
+                                                    .source_line = node->param->source_line
+                                                })
+                                }),
+                            }),
+                            .prev = tuple_declaration, .next = NULL,
+                            .source_line = node->param->source_line,
+                            .scope_level = 0
+                        });
+                    if (tuple_declaration == NULL) {
+                        tuple_declaration = to_be_appended;
+                    } else {
+                        tuple_declaration->next = to_be_appended;
+                        tuple_declaration = tuple_declaration->next;
+                    }
+                }
+
+                NEWLINE();
+
+                if (node->param->type)
+                node = node->next;
+                counter += 1;
+            }
+        }
+
         push_type(type_table, type_identifier,
-                    /*TODO: construct a proper entry for enhanced type inference*/ NULL, NULL,
+                    tuple_declaration, NULL,
                     true /*top_level*/, global_scope_level);
 
         // We create a new buffer to print the type to,
@@ -715,14 +772,24 @@ char *register_tuple_if_needed(struct Type *x, bool *had_to_register) {
             assert(node->param != NULL);
             set_src(node->param->source_line);
 
+            bool is_impl = false;
+
             char *member_name = node->param->name;
             if (member_name == NULL) {
                 // Unnamed tuple members get the name _0 if in first position, _1 if in second, etc.
                 asprintf(&member_name, "_%d", counter);
+            } else {
+                is_impl = strcmp(member_name, "__impl__") == 0;
             }
 
-            tabs();
-            p("%s;", t_str_type(node->param->type, member_name, false));
+            if (is_impl) {
+                // The "__impl__" variable isn't actually translated, it's only used for its constdata-definition side effects
+                t_str_type(node->param->type, NULL, false);
+            } else {
+                tabs();
+                p("%s;", t_str_type(node->param->type, member_name, false));
+            }
+
             NEWLINE();
 
             if (node->param->type)
@@ -1551,19 +1618,19 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
                     assert(vars != NULL);
                     REWIND_LIST(vars);
                     while (!found_var && vars != NULL) {
-                        //fprintf(stderr, "checking %s", vars->decl->name);
+                        // fprintf(stderr, "checking %s", vars->decl->name);
                         if (vars->decl->name != NULL && strcmp(vars->decl->name, x->struct_access_deref.member) == 0) {
                             found_var = true;
-                            //fprintf(stderr, " match %s", t_str_type(type, NULL, false));
+                            // fprintf(stderr, " match %s", t_str_type(type, NULL, false));
                             return_type = type;
                         }
-                        //fprintf(stderr, "\n");
+                        // fprintf(stderr, "\n");
 
                         vars = vars->next;
                     }
                     decls = decls->next;
                 }
-                //fprintf(stderr, "\n");
+                // fprintf(stderr, "\n");
             }
 
             p("%s", x->struct_access_deref.member);
@@ -1883,6 +1950,9 @@ void dispatch_constdata(char *type_name, struct DeclarationList *data, bool new_
     //    that contains the constdata field, then
     //    set it to be initialized to the proper data.
     // Add the helper annotations for function-valued literals.
+
+    if (dry_run)
+        return;
 
     assert(data != NULL);
     TypeTablePtr entry = fetch_type(type_table, type_name);
@@ -2428,15 +2498,35 @@ void t_statement(struct Statement *stat) {
     case Jump:
         switch (stat->j->tag) {
         case Return:
-            tabs();
-            p("return");
+            bool saved_dr = dry_run;
+            struct Type *t = NULL;
 
             if (stat->j->return_stat.expr != NULL) {
-                p(" ");
-                t_expr(stat->j->return_stat.expr);
+                dry_run = true;
+                t = t_expr(stat->j->return_stat.expr);
+                DISCARD_QUALIFIERS(t);
+                dry_run = saved_dr;
             }
-            p(";");
-            NEWLINE();
+
+            if (t != NULL && t->tag == Void) {
+                tabs();
+                t_expr(stat->j->return_stat.expr);
+                p(";");
+
+                p(" return;");
+
+                NEWLINE();
+            } else {
+                tabs();
+                p("return");
+
+                if (stat->j->return_stat.expr != NULL) {
+                    p(" ");
+                    t_expr(stat->j->return_stat.expr);
+                }
+                p(";");
+                NEWLINE();
+            }
             break;
         case Goto:
             tabs();

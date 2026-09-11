@@ -1,3 +1,5 @@
+tuple(tuple(i32) constdata { i32 k = 4; }) constdata { i32 k = 99; } __impl__;
+
 i32 (&)(void) main = ${
     type struct B = {
         i32 x;
@@ -10,4 +12,13 @@ i32 (&)(void) main = ${
 
     struct A var;
     var.var.k;
+
+    tuple(tuple(i32)) var2;
+    switch (0) {
+        case var2.k: { }
+        case var2._0.k: { }
+    }
+    var2.k;
+    var2._0;
+    var2._0.k;
 };
