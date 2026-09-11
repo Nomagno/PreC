@@ -1533,8 +1533,14 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
                 p(".");
             }
 
-            // TODO: complete type inference (pass down the type of the access as return_type)
-            //       using the type table too
+            if (type_name != NULL) {
+                TypeTablePtr entry = fetch_type(type_table, type_name);
+                struct DeclarationList *decls = entry->regulardata;
+                // TODO: complete type inference (pass down the type of the access as return_type)
+                //       using the type table too
+                // return_type = ...;
+            }
+
             p("%s", x->struct_access_deref.member);
         }
         break;
@@ -1621,8 +1627,14 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
                 p(".");
             }
 
-            // TODO: complete type inference (pass down the type of the access as return_type)
-            //       using the type table too
+            if (type_name != NULL) {
+                TypeTablePtr entry = fetch_type(type_table, type_name);
+                struct DeclarationList *decls = entry->regulardata;
+                // TODO: complete type inference (pass down the type of the access as return_type)
+                //       using the type table too
+                // return_type = ...;
+            }
+
             p("%s", x->struct_access_deref.member);
         }
 
