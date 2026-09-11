@@ -58,6 +58,24 @@ static void cull_types(TypeTablePtr table, unsigned scope_to_delete) {
             table->next = table->next->next;
             free(del);
         } else {
+            if (table->next->constdata != NULL) {
+                REWIND_LIST(table->next->constdata);
+                while (table->next->constdata->scope_level == scope_to_delete) {
+                    table->next->constdata = table->next->constdata->next;
+                    table->next->constdata->prev = NULL;
+                }
+                while (table->next->constdata->next != NULL) {
+                    if (table->next->constdata->next->scope_level
+                        == scope_to_delete) {
+                        table->next->constdata->next = table->next->constdata->next->next;
+                        if (table->next->constdata->next != NULL)
+                            table->next->constdata->next->prev = table->next->constdata;
+                    } else {
+                        table->next->constdata = table->next->constdata->next;
+                    }
+                }
+            }
+
             table = table->next;
         }
     }

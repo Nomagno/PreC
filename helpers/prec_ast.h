@@ -4,6 +4,9 @@
 #include <stdint.h>
 #define C(_c1, _c2) (int16_t)(_c1 << 8 | + _c2)
 
+#define REWIND_LIST(_name) do { while (_name->prev != NULL) { _name = _name->prev; } } while(0)
+#define FORWARD_LIST(_name) do { while (_name->next != NULL) { _name = _name->next; } } while(0)
+
 // For bison, set the source line automatically for each struct
 #ifdef FROM_BISON
     #define DUP(...) ({typeof(__VA_ARGS__) *tmp;\
@@ -342,6 +345,7 @@ struct DeclarationList {
     struct DeclarationList *prev;
     struct DeclarationList *next;
     unsigned source_line;
+    unsigned scope_level;
     _Bool unique;
     _Bool starts_local_block;
 };

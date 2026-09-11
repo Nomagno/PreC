@@ -128,10 +128,6 @@ struct BufferList *current_buffer;
     .source_line = _source \
 );
 
-
-
-#define REWIND_LIST(_name) do { while (_name->prev != NULL) { _name = _name->prev; } } while(0)
-
 #define DISCARD_QUALIFIERS(_type) do { \
         if (_type && _type->tag == Qualifier) \
             _type = _type->qualifier.t; \
@@ -1118,8 +1114,7 @@ void t_initializer(struct Initializer *x, struct Type *t) {
             if (sym_table->next->scope_level != 0) {
                 SymPtr saved_next = sym_table->next->next;
                 SymPtr tmp_tmp_s = tmp_s;
-                while (tmp_tmp_s->next != NULL)
-                    tmp_tmp_s = tmp_tmp_s->next;
+                FORWARD_LIST(tmp_tmp_s);
                 tmp_tmp_s->next = sym_table->next;
                 tmp_tmp_s->next->next = NULL;
                 sym_table->next = saved_next;
@@ -1135,8 +1130,7 @@ void t_initializer(struct Initializer *x, struct Type *t) {
             if (type_table->next->scope_level != 0) {
                 TypeTablePtr saved_next = type_table->next->next;
                 TypeTablePtr tmp_tmp_t = tmp_t;
-                while (tmp_tmp_t->next != NULL)
-                    tmp_tmp_t = tmp_tmp_t->next;
+                FORWARD_LIST(tmp_tmp_t);
                 tmp_tmp_t->next = type_table->next;
                 tmp_tmp_t->next->next = NULL;
                 type_table->next = saved_next;
@@ -1158,12 +1152,12 @@ void t_initializer(struct Initializer *x, struct Type *t) {
 
         // push the saved symbols and types back in
         SymPtr tmp_s_orig = tmp_s;
-        while (tmp_s->next != NULL) tmp_s = tmp_s->next;
+        FORWARD_LIST(tmp_s);
         tmp_s->next = sym_table->next;
         sym_table->next = tmp_s_orig->next;
 
         TypeTablePtr tmp_t_orig = tmp_t;
-        while (tmp_t->next != NULL) tmp_t = tmp_t->next;
+        FORWARD_LIST(tmp_t);
         tmp_t->next = type_table->next;
         type_table->next = tmp_t_orig->next;
 
@@ -1844,8 +1838,8 @@ void dispatch_constdata(char *type_name, struct DeclarationList *data, bool new_
     struct DeclarationList *append_to_list = NULL;
 
     append_to_list = entry->constdata;
-    while (append_to_list != NULL && append_to_list->next != NULL)
-        append_to_list = append_to_list->next;
+    if (append_to_list != NULL)
+        FORWARD_LIST(append_to_list);
 
     REWIND_LIST(data);
 
@@ -1898,10 +1892,11 @@ void dispatch_constdata(char *type_name, struct DeclarationList *data, bool new_
                                                 .val = vars_node->decl->val,
                                                 .source_line = data->source_line
                                             })
-                            })
+                            }),
                         }),
                         .prev = append_to_list, .next = NULL,
-                        .source_line = vars_node->source_line
+                        .source_line = vars_node->source_line,
+                        .scope_level = top_level ? 0 : global_scope_level
                     });
                 if (append_to_list == NULL) {
                     append_to_list = to_be_appended;
@@ -1951,9 +1946,7 @@ void dispatch_constdata(char *type_name, struct DeclarationList *data, bool new_
                 SAVE_BUFFER();
                 struct BufferList *tmp = buffer_list;
 
-                while (buffer_list->next != NULL) {
-                    buffer_list = buffer_list->next;
-                }
+                FORWARD_LIST(buffer_list);
                 buffer_list->next = create_buffer();
                 current_buffer = buffer_list->next;
 
