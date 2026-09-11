@@ -1056,7 +1056,7 @@ void t_block(struct Block *b, struct TypeParamList *param_list) {
 
             // purely cosmetic newline
             set_src(node->item->decl->source_line);
-            NEWLINE();
+            //NEWLINE();
             break;
         case Declaration:
             set_src(node->item->decl->source_line);
@@ -2174,6 +2174,7 @@ void t_typedefinition(struct TypeDefinition *tdef, bool top_level) {
 
                 node = node->next;
             }
+            set_src(tdef->source_line);
 
             global_indent_level -= 1;
 
@@ -2214,6 +2215,9 @@ void t_typedefinition(struct TypeDefinition *tdef, bool top_level) {
             tabs();
             p("}");
         }
+
+        set_src(tdef->source_line);
+
         break;
     }
 
