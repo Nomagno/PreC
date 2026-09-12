@@ -1168,7 +1168,7 @@ void t_initializer(struct Initializer *x, struct Type *t) {
         current_funname = unique_temporary_identifier;
 
         if (x->is_inline) {
-            p("inline ");            
+            p("inline ");
         } else {
             p("static ");
         }
@@ -1473,8 +1473,14 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
         return_type = x->cast.type;
         break;
     case CompoundLiteral:
-        p("("); p("%s", t_str_type(x->compound_literal.type, NULL, false)); p(")");
+        p("(");
+
+        p("(");
+            p("%s", t_str_type(x->compound_literal.type, NULL, false));
+        p(")");
         t_initializer(x->compound_literal.init, x->compound_literal.type);
+
+        p(")");
         return_type = x->compound_literal.type;
         break;
     case StructAccess:
@@ -2284,8 +2290,9 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
         }
         set_src(node->decl->source_line);
         if (node->decl->val != NULL) {
-            // top level functions with no qualifiers and a function initializer get implicitly converted to declarations/definitions
             if (top_level && decl->type->tag == FunPointer && node->decl->val->tag == Code) {
+                // top level functions with no qualifiers and a function initializer
+                // get implicitly converted to declarations/definitions
                 push_symbol(sym_table, node->decl->name, decl->type, top_level, global_scope_level);
 
                 char *saved_funname = current_funname;
@@ -2316,6 +2323,8 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
             }
         } else {
             if (top_level && decl->type->tag == FunPointer) {
+                // top level functions with no qualifiers and a function initializer
+                // get implicitly converted to declarations/definitions
                 push_symbol(sym_table, node->decl->name, decl->type, top_level, global_scope_level);
 
                 p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, true /*dereference_function_pointer*/));

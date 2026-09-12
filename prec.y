@@ -14,6 +14,7 @@
 %{
     #include <stdio.h>
     #include <stdlib.h>
+    #include <stdbool.h>
 
     #define FROM_BISON
     #include "helpers/prec_ast.h"
@@ -337,7 +338,7 @@ initializer
     | '$' compound_statement
         { $$ = DUP_T(Initializer, Code, .code = $2); }
     | INLINE '$' compound_statement
-        { $$ = DUP_T(Initializer, Code, .code = $3, .is_inline = 1); }
+        { $$ = DUP_T(Initializer, Code, .code = $3, .is_inline = true); }
     ;
 
 compound_literal_initializer
@@ -348,7 +349,7 @@ compound_literal_initializer
     | '$' compound_statement
         { $$ = DUP_T(Initializer, Code, .code = $2); }
     | INLINE '$' compound_statement
-        { $$ = DUP_T(Initializer, Code, .code = $3, .is_inline = 1); }
+        { $$ = DUP_T(Initializer, Code, .code = $3, .is_inline = true); }
     ;
 
 initializer_list

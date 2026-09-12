@@ -1,0 +1,11 @@
+i32 (&)(void) main = ${
+    // Note: Will only compile with optimization level -O1 or higher in most C99-compliant compilers.
+    //       Will fail to compile on most compilers with -O0.
+    //       This is the face for Clang and GCC, at the very least.
+    //       Specifically, if you disable function inlining, it should result in an linking error.
+
+    // Note: tinycc is NOT, in fact, C99-compliant. In this caset, it ignores the inline keyword.
+    //       So it will always compile with tcc.
+
+    return (<i32 (&)(void)> inline ${ return 99; })();
+};
