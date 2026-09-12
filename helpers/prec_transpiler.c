@@ -1167,7 +1167,11 @@ void t_initializer(struct Initializer *x, struct Type *t) {
         x->code_backchannel = unique_temporary_identifier;
         current_funname = unique_temporary_identifier;
 
-        p("static ");
+        if (x->is_inline) {
+            p("inline ");            
+        } else {
+            p("static ");
+        }
 
         char *decl = t_str_type(t, unique_temporary_identifier, true /*dereference function pointer*/);
         set_src(x->source_line);
@@ -2289,7 +2293,11 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
                 current_funname = node->decl->name;
                 node->decl->val->code_backchannel = node->decl->name;
 
-                p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, true));
+                if (node->decl->val->is_inline) {
+                    p("inline ");
+                }
+
+                p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, true /*dereference_function_pointer*/));
 
                 set_src(node->decl->val->source_line);
                 t_block(node->decl->val->code, decl->type->fun_pointer.param_list);
@@ -2310,7 +2318,7 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
             if (top_level && decl->type->tag == FunPointer) {
                 push_symbol(sym_table, node->decl->name, decl->type, top_level, global_scope_level);
 
-                p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, true));
+                p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, true /*dereference_function_pointer*/));
 
                 if (freeform) { p("; "); }
                 else          { p(";"); NEWLINE(); }

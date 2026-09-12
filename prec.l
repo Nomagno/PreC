@@ -77,6 +77,7 @@ int real_line_number = -1;
 "do"			{ count(); return(DO); }
 "else"			{ count(); return(ELSE); }
 "enum"			{ count(); return(ENUM); }
+"inline"		{ count(); return(INLINE); }
 "extern"		{ count(); return(EXTERN); }
 "for"			{ count(); return(FOR); }
 "goto"			{ count(); return(GOTO); }

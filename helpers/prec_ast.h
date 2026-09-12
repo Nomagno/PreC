@@ -2,6 +2,7 @@
 #define _PREC_AST_H
 
 #include <stdint.h>
+#include <stdbool.h>
 #define C(_c1, _c2) (int16_t)(_c1 << 8 | + _c2)
 
 #define REWIND_LIST(_name) do { while (_name->prev != NULL) { _name = _name->prev; } } while(0)
@@ -178,6 +179,7 @@ struct Initializer {
     // when a function-valued literal is translated
     char *code_backchannel;
     unsigned source_line;
+    bool is_inline;
 };
 
 enum TypeSort {
@@ -346,8 +348,8 @@ struct DeclarationList {
     struct DeclarationList *next;
     unsigned source_line;
     unsigned scope_level;
-    _Bool unique;
-    _Bool starts_local_block;
+    bool unique;
+    bool starts_local_block;
 };
 
 struct Block {

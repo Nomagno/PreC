@@ -127,7 +127,7 @@
 %token PTR_METHOD_OP METHOD_OP PTR_OP LEFT_OP RIGHT_OP LE_OP GE_OP EQ_OP NE_OP
 %token AND_OP OR_OP
 
-%token EXTERN STATIC RESTRICT MUT VOLATILE
+%token INLINE EXTERN STATIC RESTRICT MUT VOLATILE
 %token BOOL UPTR IPTR U8 I8 U16 I16 U32 I32 U64 I64 F32 F64 VOID
 %token STRUCT UNION ENUM CONSTDATA UNIQUE LOCAL
 %token ELLIPSIS
@@ -336,6 +336,8 @@ initializer
         { $$ = DUP_T(Initializer, Data, .data = $2); }
     | '$' compound_statement
         { $$ = DUP_T(Initializer, Code, .code = $2); }
+    | INLINE '$' compound_statement
+        { $$ = DUP_T(Initializer, Code, .code = $3, .is_inline = 1); }
     ;
 
 compound_literal_initializer
@@ -531,7 +533,7 @@ constdata_block
     : CONSTDATA '{' struct_declaration_list '}'
         { $$ = $3; }
     | LOCAL CONSTDATA '{' struct_declaration_list '}'
-        { $$ = $4; while ($$->prev != NULL) { $$ = $$->prev; }     $$->starts_local_block = 1; while ($$->next != NULL) { $$ = $$->next; }  }
+        { $$ = $4; while ($$->prev != NULL) { $$ = $$->prev; }     $$->starts_local_block = true; while ($$->next != NULL) { $$ = $$->next; }  }
     ;
 
 struct_declaration_list
@@ -540,9 +542,9 @@ struct_declaration_list
 	| struct_declaration_list declaration ';'
 	    { $1->next = DUP((struct DeclarationList){ .decl = $2, .prev = $1, .next = NULL }); $$ = $1->next; }
 	| UNIQUE declaration ';'
-	    { $$ = DUP((struct DeclarationList){ .decl = $2, .next = NULL, .unique = 1 }); }
+	    { $$ = DUP((struct DeclarationList){ .decl = $2, .next = NULL, .unique = true }); }
 	| struct_declaration_list UNIQUE declaration ';'
-	    { $1->next = DUP((struct DeclarationList){ .decl = $3, .prev = $1, .next = NULL, .unique = 1 }); $$ = $1->next; }
+	    { $1->next = DUP((struct DeclarationList){ .decl = $3, .prev = $1, .next = NULL, .unique = true }); $$ = $1->next; }
 	| struct_declaration_list ';'
 	    { $$ = $1; }
 	;
