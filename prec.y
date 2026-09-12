@@ -347,6 +347,8 @@ compound_literal_initializer
         { $$ = DUP_T(Initializer, Data, .data = $2); }
     | '$' compound_statement
         { $$ = DUP_T(Initializer, Code, .code = $2); }
+    | INLINE '$' compound_statement
+        { $$ = DUP_T(Initializer, Code, .code = $3, .is_inline = 1); }
     ;
 
 initializer_list
