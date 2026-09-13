@@ -32,7 +32,7 @@ int real_line_number = -1;
 "//"[^\n]*              { /* consume //-comment */ }
 
 
-^"#"\ [0-9]+\ \"[A-Z\-a-z_\.\<\>/]+\".*[\n] {
+^"#"\ [0-9]+\ \".*\".*[\n] {
     /* See: https://gcc.gnu.org/onlinedocs/cpp/Preprocessor-Output.html */
 
     char *mystring = strdup(yytext);
