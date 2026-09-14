@@ -112,7 +112,7 @@ if [ $transpile_flag = FALSE ]; then
     eval "$c_compiler $args"
 fi
 
-if [ $fsyntax_only_flag = TRUE ]; then
+if [ $fsyntax_only_flag = TRUE ] || [ $transpile_flag = FALSE ]; then
     for i in $args; do
         case "$i" in
           \'*.prec.c\')
