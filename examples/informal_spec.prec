@@ -43,6 +43,25 @@
 //    code;
 //  }
 
+// tagged unions:
+// used like so (only can be accessed through ``case extract'')
+//
+// type t_union Animal {
+//    i32 Dog;
+//    f32 Cat;
+//};
+//
+// t_union Animal x;
+// switch (x.tag) {
+// case extract(Dog, x, mydog):
+//    printf("%d", mydog);
+// case extract(Cat, x, mycat):
+//     printf("%f", mycat);
+// default:
+//     printf("UNHANDLED UNION MEMBER!!!!");
+// }
+
+
 // - struct access auto-dereference
 // - no typedef, explicit type definition syntax:
 //      type struct vector = { i32 x, y; };

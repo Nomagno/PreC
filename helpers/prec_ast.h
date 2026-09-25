@@ -192,6 +192,7 @@ enum TypeSort {
     Struct='s',
     Tuple=C('t','u'),
     Union='u',
+    TUnion='U',
     Enum='e',
     CType=C('c','t'),
     f64=C('f',64),
@@ -264,6 +265,7 @@ struct Type {
 enum TypeDefinitionSort {
     NewStruct,
     NewUnion,
+    NewTUnion,
     NewEnum
 };
 
@@ -433,9 +435,14 @@ struct JumpStatement {
 };
 
 struct LabeledStatement {
-    enum { Case='c', CaseFall='f', Default_Label='d', Label='l' } tag;
+    enum { Case='c', CaseExtract='e', CaseFall='f', Default_Label='d', Label='l' } tag;
     char *label_name; // For the Label case
     struct ConstExpr *case_expr; // For the Case case
+    struct {
+        char *tag;
+        char *from;
+        char *to;
+    } case_extract; // For the Case case
     struct Statement *stat; // For all cases
     unsigned source_line;
 };

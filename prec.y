@@ -130,7 +130,7 @@
 
 %token INLINE EXTERN STATIC RESTRICT MUT VOLATILE
 %token BOOL UPTR IPTR U8 I8 U16 I16 U32 I32 U64 I64 F32 F64 VOID
-%token STRUCT UNION ENUM CONSTDATA UNIQUE LOCAL
+%token EXTRACT STRUCT UNION T_UNION ENUM CONSTDATA UNIQUE LOCAL
 %token ELLIPSIS
 %token C_INCLUDE
 
@@ -488,6 +488,8 @@ base_type
 	    { $$ = DUP_T(Type, Struct, .user_defined_type = { .tag_name = $2, .const_data = $3 }); }
     | UNION  IDENTIFIER
 	    { $$ = DUP_T(Type, Union, .user_defined_type = { .tag_name = $2 }); }
+    | T_UNION  IDENTIFIER
+	    { $$ = DUP_T(Type, TUnion, .user_defined_type = { .tag_name = $2 }); }
     | ENUM   IDENTIFIER
 	    { $$ = DUP_T(Type, Enum, .user_defined_type = { .tag_name = $2 }); }
 	;
@@ -526,6 +528,8 @@ type_definition
         { $$ = DUP_T(TypeDefinition, NewStruct, .struct_or_union_def = { .name = $3, .declarations = $6, .const_data = $8  }); }
     | TYPE UNION IDENTIFIER  '=' '{' struct_declaration_list '}' ';'
         { $$ = DUP_T(TypeDefinition, NewUnion, .struct_or_union_def = { .name = $3, .declarations = $6 }); }
+    | TYPE T_UNION IDENTIFIER  '=' '{' struct_declaration_list '}' ';'
+        { $$ = DUP_T(TypeDefinition, NewTUnion, .struct_or_union_def = { .name = $3, .declarations = $6 }); }
     | TYPE ENUM IDENTIFIER   '=' '{' enumerator_list '}' ';'
         { $$ = DUP_T(TypeDefinition, NewEnum, .enum_def = { .name = $3, .values = $6 }); }
     | TYPE ENUM IDENTIFIER   '=' '{' enumerator_list ',' '}' ';'
@@ -620,6 +624,8 @@ labeled_statement
 labeled_statement_switch
 	: CASE constant_expression ':' statement
 	    { $$ = DUP_T(LabeledStatement, Case, .case_expr = $2, .stat = $4); }
+	| CASE EXTRACT '(' IDENTIFIER ',' IDENTIFIER ',' IDENTIFIER ')' ':' statement
+	    { $$ = DUP_T(LabeledStatement, CaseExtract, .case_extract = { .tag = $4, .from = $6, .to = $8 }, .stat = $11); }
 	| CASE constant_expression ':' statement FALL ';'
 	    { $$ = DUP_T(LabeledStatement, CaseFall, .case_expr = $2, .stat = $4); }
 	;
