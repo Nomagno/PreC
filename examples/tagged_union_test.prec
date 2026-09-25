@@ -1,0 +1,33 @@
+type t_union A = {
+    i32 dog;
+    f32 cat;
+};
+
+c_include "stdio.h"
+
+i32 (&)(void) main = ${
+    t_union A bob = {
+        .tag = A_cat,
+        .union_data.cat = 30.56
+    };
+
+    t_union A & bobi = &bob;
+
+    switch (bobi->tag) {
+    case extract(dog, bobi, s):
+        printf("%d\n", ^s);
+    case extract(cat, bobi, s):
+        printf("%f\n", ^s);
+    default:
+        printf("UNHANDLED CASE IN UNION A\n");
+    }
+
+    switch (bob.tag) {
+    case extract(dog, bob, s):
+        printf("%d\n", s);
+    case extract(cat, bob, s):
+        printf("%f\n", s);
+    default:
+        printf("UNHANDLED CASE IN UNION A\n");
+    }
+};

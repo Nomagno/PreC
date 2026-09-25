@@ -118,6 +118,8 @@ struct BufferList *current_buffer;
 
 #define NEW_IDENTIFIER(_id, _source) DUP_T(Expr, Identifier, .identifier = _id, .source_line = _source)
 
+#define NEW_ACCESS(_e, _id, _source) DUP_T(Expr, StructAccess, .struct_access_deref = { .e = _e, .member = _id }, .source_line = _source)
+
 #define GROUP(...) __VA_ARGS__
 
 #define QUALIFY(_t, _q, _source) DUP_T(Type, Qualifier, \
@@ -126,7 +128,7 @@ struct BufferList *current_buffer;
         .t = _t \
     }, \
     .source_line = _source \
-);
+)
 
 #define DISCARD_QUALIFIERS(_type) do { \
         if (_type && _type->tag == Qualifier) \
@@ -179,6 +181,7 @@ _Bool newline_just_printed = 0;
 
 extern const char *pretty_filename;
 extern const char *filename;
+extern bool disable_linetranslation;
 
 #define FILENAME_GRACEFUL ((pretty_filename != NULL) ? pretty_filename : filename)
 
@@ -190,7 +193,7 @@ extern const char *filename;
                 fprintf(stderr, "\" last known line: %d\n", previous_source_line); \
                 newline_just_printed = 0; \
             } else { \
-                if (pretty_filename != NULL) { \
+                if (pretty_filename != NULL && disable_linetranslation == false) { \
                     fseek(current_buffer->stream, 0, SEEK_CUR); \
                     char x = fgetc(current_buffer->stream); \
                     ungetc(x, current_buffer->stream); \
@@ -261,13 +264,13 @@ void tabs_custom(FILE *stream) {
 struct Type *t_expr(struct Expr *x, bool inline_when_possible);
 #define t_expr(_x, ...) t_expr(_x, __VA_ALT__(false, __VA_ARGS__))
 
-// a return value of 2 instead of 1 indicates that it's a void type, and must hence NOT be qualified
 bool isBaseType(enum TypeSort x) {
     return x == TypeofExpr
         || x == TypeofType
         || x == Struct
         || x == Tuple
         || x == Union
+        || x == TUnion
         || x == Enum
         || x == CType
         || x == f64
@@ -609,6 +612,11 @@ char *type_id(struct Type *x) {
             asprintf(&retval, "struct_%s", x->user_defined_type.tag_name);
             return retval;
         }
+        case TUnion: {
+            char *retval = NULL;
+            asprintf(&retval, "tunion_%s", x->user_defined_type.tag_name);
+            return retval;
+        }
         case Union: {
             char *retval = NULL;
             asprintf(&retval, "union_%s", x->user_defined_type.tag_name);
@@ -931,11 +939,15 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
         break;
     }
     case Struct:
+    case TUnion:
     case Union:
         if (x->tag == Struct) {
             p_t("struct ");
             if (x->user_defined_type.const_data != NULL)
                 dispatch_constdata(x->user_defined_type.tag_name, x->user_defined_type.const_data, false /*new_type*/, /*``local constdata'' auto-overrides this to false*/ true /*top_level*/);
+        } else if (x->tag == TUnion) {
+            // Tagged unions are internally structs
+            p_t("struct ");
         } else {
             p_t("union ");
         }
@@ -1519,7 +1531,7 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
         struct Expr *constdata_inlined_value = NULL;
 
         char *type_name = NULL;
-        if (t && t->tag == Struct) {
+        if (t && (t->tag == Struct || t->tag == TUnion)) {
             type_name = t->user_defined_type.tag_name;
         } else if (t && t->tag == Tuple) {
             type_name = type_id(t);
@@ -1829,6 +1841,7 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
         break;
         }
     }
+
     return return_type;
 }
 #undef t_expr
@@ -1913,8 +1926,9 @@ bool is_const_sized_type(struct Type *x) {
     case iptr:
     case Void:
     case Bool:
-    case Union:
     case Struct:
+    case TUnion:
+    case Union:
     case Tuple:
     case Enum:
         return true;
@@ -2122,17 +2136,25 @@ void dispatch_constdata(char *type_name, struct DeclarationList *data, bool new_
 void t_typedefinition(struct TypeDefinition *tdef, bool top_level) {
     set_src(tdef->source_line);
 
+    char *tunion_tags = NULL;
+
     switch(tdef->tag) {
     case NewStruct:
+    case NewTUnion:
     case NewUnion:
         if (tdef->tag == NewStruct) {
-            p("struct ");
+            p("struct %s ", tdef->struct_or_union_def.name);
+        } else if (tdef->tag == NewTUnion) {
+            p("struct %s { ", tdef->struct_or_union_def.name);
+            global_indent_level += 1;
+            NEWLINE();
+            set_src(tdef->source_line);
+            tabs();
+
+            p("union PreCTUnion_%s ", tdef->struct_or_union_def.name);
         } else if (tdef->tag == NewUnion) {
-            p("union ");
+            p("union %s ", tdef->struct_or_union_def.name);
         }
-
-
-        p("%s ", tdef->struct_or_union_def.name);
 
         /*TRANSLATE STRUCT/UNION BLOCK*/
         if (tdef->struct_or_union_def.declarations != NULL) {
@@ -2171,12 +2193,18 @@ void t_typedefinition(struct TypeDefinition *tdef, bool top_level) {
                         node->decl->type->qualifier.qualifiers |= Mut;
                     } else {
                         node->decl->type =
-                            QUALIFY(node->decl->type, Mut, node->decl->type->source_line)
+                            QUALIFY(node->decl->type, Mut, node->decl->type->source_line);
                     }
                     tabs();
                     p("%s", t_str_type(node->decl->type, var_node->decl->name, false));
                     p(";");
                     NEWLINE();
+
+                    if (tunion_tags == NULL) {
+                        asprintf(&tunion_tags, "%s_%s", tdef->struct_or_union_def.name, var_node->decl->name);
+                    } else {
+                        asprintf(&tunion_tags, "%s, %s_%s", tunion_tags, tdef->struct_or_union_def.name, var_node->decl->name);
+                    }
 
                     var_node = var_node->next;
                 }
@@ -2191,6 +2219,21 @@ void t_typedefinition(struct TypeDefinition *tdef, bool top_level) {
             set_src(tdef->source_line);
             tabs();
             p("}");
+
+            if (tdef->tag == NewTUnion) {
+                p(" union_data;");
+                global_indent_level -= 1;
+                NEWLINE();
+
+                set_src(tdef->source_line);
+                p("enum PreCTUnion_Tags_%s { %s } tag;", tdef->struct_or_union_def.name, tunion_tags);
+                NEWLINE();
+
+                set_src(tdef->source_line);
+                tabs();
+                p("};");
+                set_src(tdef->source_line);
+            }
         }
         break;
     case NewEnum:
@@ -2232,10 +2275,13 @@ void t_typedefinition(struct TypeDefinition *tdef, bool top_level) {
     }
 
     set_src(tdef->source_line);
-    p(";");
+
+    if (tdef->tag != NewTUnion) {
+        p(";");
+    }
 
 
-    if (tdef->tag == NewStruct) {
+    if (tdef->tag == NewStruct || tdef->tag == NewTUnion) {
         struct DeclarationList *node_regulardata = tdef->struct_or_union_def.declarations;
         struct DeclarationList *node_constdata = tdef->struct_or_union_def.const_data;
 
@@ -2250,7 +2296,6 @@ void t_typedefinition(struct TypeDefinition *tdef, bool top_level) {
             }
         }
     }
-
 }
 
 /*freeform: no newlines and no indents*/
@@ -2568,6 +2613,92 @@ void t_statement(struct Statement *stat) {
         break;
     case Labeled:
         switch (stat->l->tag) {
+        case CaseExtract:
+            global_indent_level -= 1;
+            tabs();
+
+            struct Type *type_to_extract = fetch_symbol_type(sym_table, stat->l->case_extract.from);
+            DISCARD_QUALIFIERS(type_to_extract);
+
+
+            bool is_pointer = false;
+            if (type_to_extract != NULL && type_to_extract->tag == Reference) {
+                is_pointer = true;
+                type_to_extract = type_to_extract->reference;
+                DISCARD_QUALIFIERS(type_to_extract);
+            }
+
+            if (type_to_extract == NULL || type_to_extract->tag != TUnion) {
+                fprintf(stderr, "%s:%d:%d: Compiler error: Type of extract source '%s' couldn't be determined to be tagged union\n",
+                        FILENAME_GRACEFUL, stat->source_line, 1, stat->l->case_extract.from);
+                exit(1);
+            }
+
+            set_src(stat->source_line);
+            p("case %s_%s: {", type_to_extract->user_defined_type.tag_name, stat->l->case_extract.tag);
+            NEWLINE();
+            global_indent_level += 1;
+
+            ENTER_SCOPE(stat->source_line);
+
+
+            bool saved_dr = dry_run;
+            dry_run = true;
+            struct Expr *e = NEW_ACCESS(NEW_IDENTIFIER(stat->l->case_extract.from, stat->source_line),
+                                       stat->l->case_extract.tag,
+                                       stat->source_line);
+            struct Type *type_of_extraction = t_expr(e);
+            dry_run = saved_dr;
+
+            // The difference in typing is simply down to convenience
+            if (is_pointer) {
+                /*Const pointer to const data*/
+                DISCARD_QUALIFIERS(type_of_extraction);
+                type_of_extraction = DUP_T(Type, Reference, .reference = type_of_extraction, .source_line = stat->source_line);
+            } else {
+                /*Mutable data*/
+                type_of_extraction = QUALIFY(type_of_extraction, Mut, stat->source_line);
+            }
+
+
+            push_symbol(sym_table, stat->l->case_extract.to,
+                        type_of_extraction,
+                        false /*top_level*/,
+                        global_scope_level);
+
+            set_src(stat->source_line);
+            tabs();
+            if (is_pointer) {
+                p("%s = &(%s)->union_data.%s;", t_str_type(type_of_extraction, stat->l->case_extract.to, false), stat->l->case_extract.from, stat->l->case_extract.tag);
+            } else {
+                p("%s = (%s).union_data.%s;", t_str_type(type_of_extraction, stat->l->case_extract.to, false), stat->l->case_extract.from, stat->l->case_extract.tag);
+            }
+
+            set_src(stat->source_line);
+            NEWLINE();
+            set_src(stat->source_line);
+            t_statement(stat->l->stat);
+            set_src(stat->source_line);
+            NEWLINE();
+
+            set_src(stat->source_line);
+            tabs();
+            p("break;")
+            NEWLINE();
+
+            global_indent_level -= 1;
+
+            set_src(stat->source_line);
+            tabs();
+            p("}");
+            NEWLINE();
+
+            global_indent_level += 1;
+
+            set_src(stat->source_line);
+
+            EXIT_SCOPE(stat->source_line);
+            break;
         case Case:
             global_indent_level -= 1;
 
@@ -2735,7 +2866,7 @@ void transpile(struct TopLevel *top) {
     printf("#include \"stdint.h\"\n");
     // BIND macro: do not use if you do not have a compiler that supports statement expressions!
     printf("#define LET(_name, _expr, ...) ({ typeof(_expr) _name = _expr; __VA_ARGS__; })\n");
-    if (pretty_filename != NULL)
+    if (pretty_filename != NULL  && disable_linetranslation == false)
         printf("#line 1 \"%s\"\n", pretty_filename);
 
     sym_table = new_symbol_table();

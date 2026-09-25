@@ -94,6 +94,8 @@ int real_line_number = -1;
 "unique"		{ count(); return(UNIQUE); }
 "local"		    { count(); return(LOCAL); }
 "switch"		{ count(); return(SWITCH); }
+"extract"		{ count(); return(EXTRACT); }
+"t_union"		{ count(); return(T_UNION); }
 "union"			{ count(); return(UNION); }
 "volatile"		{ count(); return(VOLATILE); }
 "while"			{ count(); return(WHILE); }

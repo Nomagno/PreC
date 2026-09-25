@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
+#include <string.h>
 
 extern char *yytext;
 extern int  yyleng;
@@ -9,6 +11,7 @@ extern int yyparse();
 FILE *file;
 char *filename = NULL;
 char *pretty_filename = NULL;
+bool disable_linetranslation = false;
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {
@@ -27,6 +30,9 @@ int main(int argc, char *argv[]) {
 
     if (argc >= 3)
         pretty_filename = argv[2];
+
+    if (argc >= 4 && strcmp(argv[3], "DISABLE_LINEPRINTING") == 0)
+        disable_linetranslation = true;
 
     yyin = file;
     yyparse();
