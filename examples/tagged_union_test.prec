@@ -6,10 +6,7 @@ type t_union A = {
 c_include "stdio.h"
 
 i32 (&)(void) main = ${
-    t_union A bob = {
-        .tag = A_cat,
-        .union_data.cat = 30.56
-    };
+    t_union A bob = TAG_WRAP(A, cat, 30.56);
 
     t_union A & bobi = &bob;
 

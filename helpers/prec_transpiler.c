@@ -1524,6 +1524,17 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
             DISCARD_QUALIFIERS(t);
         }
 
+        if (t && t->tag == TUnion) {
+            if (strncmp(x->struct_access_deref.member, "_prec_privileged_", strlen("_prec_privileged_")) == 0) {
+                x->struct_access_deref.member += strlen("_prec_privileged_");
+            } else {
+                if (strcmp(x->struct_access_deref.member, "tag") != 0) {
+                    fprintf(stderr, "%s:%d:%d: Compiler error: Request for member '%s' on tagged union is illegal. Switch on 'tag', and use the 'case extract([member], [from_var], [to_var]):' construct to get the inner data\n",
+                            FILENAME_GRACEFUL, x->source_line, 1, x->struct_access_deref.member);
+                    exit(1);
+                }
+            }
+        }
 
         // if false, we need to perform a real run later
         bool is_constdata_access = false;
@@ -2395,6 +2406,13 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
     }
 }
 
+char *concat(const char *x, const char *y) {
+    char *result = malloc(strlen(x) + strlen(y) + 1);
+    strcpy(result, x);
+    strcat(result, y);
+    return result;
+}
+
 void t_statement(struct Statement *stat) {
     set_src(stat->source_line);
     switch (stat->tag) {
@@ -2645,7 +2663,8 @@ void t_statement(struct Statement *stat) {
             bool saved_dr = dry_run;
             dry_run = true;
             struct Expr *e = NEW_ACCESS(NEW_IDENTIFIER(stat->l->case_extract.from, stat->source_line),
-                                       stat->l->case_extract.tag,
+                                       /*we need this prefix because normal user code can NOT access tagged union fields other than 'tag' directly*/
+                                       concat("_prec_privileged_", stat->l->case_extract.tag),
                                        stat->source_line);
             struct Type *type_of_extraction = t_expr(e);
             dry_run = saved_dr;
@@ -2866,6 +2885,7 @@ void transpile(struct TopLevel *top) {
     printf("#include \"stdint.h\"\n");
     // BIND macro: do not use if you do not have a compiler that supports statement expressions!
     printf("#define LET(_name, _expr, ...) ({ typeof(_expr) _name = _expr; __VA_ARGS__; })\n");
+    printf("#define TAG_WRAP(_typename, _fieldname, _value) { .tag = _typename ## _ ##_fieldname, .union_data._fieldname = _value }\n");
     if (pretty_filename != NULL  && disable_linetranslation == false)
         printf("#line 1 \"%s\"\n", pretty_filename);
 
