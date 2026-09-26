@@ -48,6 +48,7 @@ unsigned global_identifier_counter = 0;
 int global_indent_level = 0;
 int global_scope_level = 0;
 char *current_funname = NULL;
+struct Type *current_funtype = NULL;
 
 SymPtr sym_table;
 TypeTablePtr type_table;
@@ -120,15 +121,17 @@ struct BufferList *current_buffer;
 
 #define NEW_ACCESS(_e, _id, _source) DUP_T(Expr, StructAccess, .struct_access_deref = { .e = _e, .member = _id }, .source_line = _source)
 
+#define WRAP_BLOCK(_b) DUP_T(Statement, Block, .b = _b, .source_line = _b->source_line)
+
 #define GROUP(...) __VA_ARGS__
 
-#define QUALIFY(_t, _q, _source) DUP_T(Type, Qualifier, \
+#define QUALIFY(_t, _q, _source) if (_t->tag == Qualifier) { _t->qualifier.qualifiers |= _q; } else { _t = DUP_T(Type, Qualifier, \
     .qualifier = { \
         .qualifiers = _q, \
         .t = _t \
     }, \
-    .source_line = _source \
-)
+    .source_line = _source); \
+}
 
 #define DISCARD_QUALIFIERS(_type) do { \
         if (_type && _type->tag == Qualifier) \
@@ -530,12 +533,7 @@ char *type_id(struct Type *x) {
                     asprintf(&member_name, "ANON%d", counter);
                 }
 
-                if (node->param->type->tag == Qualifier) {
-                    node->param->type->qualifier.qualifiers |= Mut;
-                } else {
-                    node->param->type =
-                        QUALIFY(node->param->type, Mut, node->param->type->source_line);
-                }
+                QUALIFY(node->param->type, Mut, node->param->type->source_line);
 
                 asprintf(&retval, "%s_%s_%s", retval, type_id(node->param->type), member_name);
 
@@ -981,7 +979,7 @@ char *t_str_type(struct Type *x, char *identifier, bool fun_pointer_dereferenced
     if (x->tag == Void) {
         // Void by itself MUST NOT be qualified. Compilers error out.
         // So, we just don't allow this behaviour.
-        x = QUALIFY(x, Mut, x->source_line);
+        QUALIFY(x, Mut, x->source_line);
     }
 
     t_internal_type(x, type_buffer);
@@ -1031,6 +1029,7 @@ void t_typedefinition(struct TypeDefinition *tdef, bool top_level);
 
 void t_block(struct Block *b, struct TypeParamList *param_list) {
     if (b == NULL) {
+        set_src(b->source_line);
         tabs();
         p("{ }");
         return;
@@ -1096,6 +1095,64 @@ void t_block(struct Block *b, struct TypeParamList *param_list) {
     NEWLINE();
 
     EXIT_SCOPE(b->source_line);
+}
+
+bool statement_contains_loop(struct Statement *stat) {
+    if (!stat) return false;
+    switch(stat->tag) {
+    case Expression:
+        return false;
+    case Labeled:
+        if (!stat->l) return false;
+        return statement_contains_loop(stat->l->stat);
+    case Block:
+        if (!stat->b) return false;
+        struct BlockList *b_items = stat->b->contents;
+        REWIND_LIST(b_items);
+        while (b_items != NULL) {
+            if (b_items && b_items->item && b_items->item->tag == Statement) {
+                if (statement_contains_loop(b_items->item->stat)) {
+                    return true;
+                }
+            }
+            b_items = b_items->next;
+        }
+        return false;
+    case Jump:
+        if (!stat->j) return false;
+        switch (stat->j->tag) {
+        case Loop:
+            return true;
+        case Return:
+        case Continue:
+        case Goto:
+        case Break:
+            return false;
+        }
+    case Selection:
+        if (!stat->s) return false;
+        switch (stat->s->tag) {
+        case If:
+            return statement_contains_loop(stat->s->simple_if.action);
+        case IfElse:
+            return statement_contains_loop(stat->s->if_else.action_true)
+                   || statement_contains_loop(stat->s->if_else.action_false);
+        case Switch:
+            return statement_contains_loop(stat->s->switch_stat.block);
+        }
+    case Iteration:
+        if (!stat->i) return false;
+        switch(stat->i->tag) {
+        case While:
+        case DoWhile:
+            return statement_contains_loop(stat->i->while_dowhile_stat.stat);
+        case For_Decl:
+            return statement_contains_loop(stat->i->for_stat_decl.stat);
+        case For_Expr:
+            return statement_contains_loop(stat->i->for_stat_expr.stat);
+        }
+    }
+    assert(!"ERROR: Control flow reached end of statement_contains_loop");
 }
 
 // The type can be NULL
@@ -1166,6 +1223,7 @@ void t_initializer(struct Initializer *x, struct Type *t) {
         SAVE_BUFFER();
         struct BufferList *tmp = buffer_list;
         char *saved_funname = current_funname;
+        struct Type *saved_funtype = current_funtype;
 
         buffer_list = create_buffer();
         buffer_list->next = tmp;
@@ -1178,6 +1236,7 @@ void t_initializer(struct Initializer *x, struct Type *t) {
 
         x->code_backchannel = unique_temporary_identifier;
         current_funname = unique_temporary_identifier;
+        current_funtype = t;
 
         if (x->is_inline) {
             p("inline ");
@@ -1185,6 +1244,25 @@ void t_initializer(struct Initializer *x, struct Type *t) {
             p("static ");
         }
 
+        bool contains_loop = statement_contains_loop(WRAP_BLOCK(x->code));
+        if (contains_loop) {
+            struct TypeParamList *params = t->fun_pointer.param_list;
+            REWIND_LIST(params);
+            while (params != NULL) {
+                if (params->param != NULL) {
+                    /*This is a bit hard to explain, but in order to perform tail recursion,
+                     we force the parameters to be mutable. The programmer is expected to know
+                     (as explained in the language docs) that top-level constness or arguments
+                     disappears as soon as the 'loop' construct appears anywhere in a function*/
+
+                     /*As per the C standard, we are okay to do this because qualifiers
+                     do not affect the compatibility of function pointer signatures.*/
+                    QUALIFY(params->param->type, Mut, params->param->type->source_line);
+                }
+                params = params->next;
+            }
+        }
+        
         char *decl = t_str_type(t, unique_temporary_identifier, true /*dereference function pointer*/);
         set_src(x->source_line);
         p("%s", decl);
@@ -1223,12 +1301,18 @@ void t_initializer(struct Initializer *x, struct Type *t) {
         }
         type_table = t_clone;
 
-
-
+        if (contains_loop) {
+            p("{ _prec_function_start:");
+        }
 
         check_empty_tables();
         t_block(x->code, t->fun_pointer.param_list);
         check_empty_tables();
+
+        if (contains_loop) {
+            set_src(x->code->source_line);
+            p("}");
+        }
 
 
 
@@ -1247,6 +1331,7 @@ void t_initializer(struct Initializer *x, struct Type *t) {
 
         RESTORE_BUFFER();
         current_funname = saved_funname;
+        current_funtype = saved_funtype;
 
         // This will have been set to true by t_block()
         newline_just_printed = false;
@@ -2200,12 +2285,7 @@ void t_typedefinition(struct TypeDefinition *tdef, bool top_level) {
                     //    local variables with a type that contains a struct that has ANY const member
                     //    can NEVER be reassigned easily.
                     // So, we just don't allow this behaviour.
-                    if (node->decl->type->tag == Qualifier) {
-                        node->decl->type->qualifier.qualifiers |= Mut;
-                    } else {
-                        node->decl->type =
-                            QUALIFY(node->decl->type, Mut, node->decl->type->source_line);
-                    }
+                    QUALIFY(node->decl->type, Mut, node->decl->type->source_line);
                     tabs();
                     p("%s", t_str_type(node->decl->type, var_node->decl->name, false));
                     p(";");
@@ -2352,20 +2432,50 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
                 push_symbol(sym_table, node->decl->name, decl->type, top_level, global_scope_level);
 
                 char *saved_funname = current_funname;
+                struct Type *saved_funtype = current_funtype;
 
                 current_funname = node->decl->name;
+                current_funtype = decl->type;
                 node->decl->val->code_backchannel = node->decl->name;
 
                 if (node->decl->val->is_inline) {
                     p("inline ");
                 }
 
+                bool contains_loop = statement_contains_loop(WRAP_BLOCK(node->decl->val->code));
+                if (contains_loop) {
+                    struct TypeParamList *params = decl->type->fun_pointer.param_list;
+                    REWIND_LIST(params);
+                    while (params != NULL) {
+                        if (params->param != NULL) {
+                            /*This is a bit hard to explain, but in order to perform tail recursion,
+                             we force the parameters to be mutable. The programmer is expected to know
+                             (as explained in the language docs) that top-level constness or arguments
+                             disappears as soon as the 'loop' construct appears anywhere in a function*/
+
+                             /*As per the C standard, we are okay to do this because qualifiers
+                             do not affect the compatibility of function pointer signatures.*/
+                            QUALIFY(params->param->type, Mut, params->param->type->source_line);
+                        }
+                        params = params->next;
+                    }
+                }
+
                 p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, true /*dereference_function_pointer*/));
 
                 set_src(node->decl->val->source_line);
+
+                if (contains_loop) {
+                    p("{ _prec_function_start:");
+                }
                 t_block(node->decl->val->code, decl->type->fun_pointer.param_list);
+                if (contains_loop) {
+                    set_src(node->decl->val->code->source_line);
+                    p("}");
+                }
 
                 current_funname = saved_funname;
+                current_funtype = saved_funtype;
             } else {
                 push_symbol(sym_table, node->decl->name, decl->type, top_level, global_scope_level);
 
@@ -2581,6 +2691,33 @@ void t_statement(struct Statement *stat) {
         break;
     case Jump:
         switch (stat->j->tag) {
+        case Loop:
+
+            struct TypeParamList *signature_params = current_funtype->fun_pointer.param_list;
+            struct ArgumentExpressionList *loop_params = stat->j->loop_args;
+            REWIND_LIST(signature_params);
+            REWIND_LIST(loop_params);
+            while (signature_params != NULL && loop_params != NULL) {
+                set_src(stat->source_line);
+                if (loop_params->expr != NULL && signature_params->param != NULL) {
+                    if (signature_params->param->name != NULL) {
+                        tabs();
+                        p("%s = ", signature_params->param->name);
+                        t_expr(loop_params->expr);
+                        p(";");
+                        NEWLINE();
+                    }
+                }
+
+                loop_params = loop_params->next;
+                signature_params = signature_params->next;
+            }
+            
+            set_src(stat->source_line);
+            tabs();
+            p("goto _prec_function_start;");
+            NEWLINE();
+            break;
         case Return:
             bool saved_dr = dry_run;
             struct Type *t = NULL;
@@ -2676,7 +2813,7 @@ void t_statement(struct Statement *stat) {
                 type_of_extraction = DUP_T(Type, Reference, .reference = type_of_extraction, .source_line = stat->source_line);
             } else {
                 /*Mutable data*/
-                type_of_extraction = QUALIFY(type_of_extraction, Mut, stat->source_line);
+                QUALIFY(type_of_extraction, Mut, stat->source_line);
             }
 
 

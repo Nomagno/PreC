@@ -422,7 +422,7 @@ struct SelectionStatement {
 };
 
 struct JumpStatement {
-    enum { Return='r', Continue='c', Goto='g', Break='b'} tag;
+    enum { Return='r', Continue='c', Goto='g', Break='b', Loop='l'} tag;
     union {
         struct {
             struct Expr* expr;
@@ -430,6 +430,7 @@ struct JumpStatement {
         struct {
             char *label_name;
         } goto_stat;
+        struct ArgumentExpressionList *loop_args;
     };
     unsigned source_line;
 };

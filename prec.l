@@ -80,6 +80,7 @@ int real_line_number = -1;
 "inline"		{ count(); return(INLINE); }
 "extern"		{ count(); return(EXTERN); }
 "for"			{ count(); return(FOR); }
+"loop"			{ count(); return(LOOP); }
 "goto"			{ count(); return(GOTO); }
 "if"			{ count(); return(IF); }
 "restrict"		{ count(); return(RESTRICT); }

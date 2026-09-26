@@ -149,7 +149,7 @@
 %left '*' '/' '%'
 %right '&' '^' '!' '~' NOT
 
-%token CASE DEFAULT IF ELSE SWITCH WHILE DO FOR GOTO CONTINUE BREAK FALL RETURN
+%token CASE DEFAULT IF ELSE SWITCH WHILE DO FOR GOTO LOOP CONTINUE BREAK FALL RETURN
 
 %start top_level
 
@@ -723,6 +723,10 @@ jump_statement
 	    { $$ = DUP_T(JumpStatement, Return, .return_stat = { .expr = NULL }); }
 	| RETURN expression ';'
 	    { $$ = DUP_T(JumpStatement, Return, .return_stat = { .expr = $2 }); }
+	| LOOP '(' ')' ';'
+	    { $$ = DUP_T(JumpStatement, Loop, .loop_args = NULL); }
+	| LOOP '(' argument_expression_list ')' ';'
+	    { $$ = DUP_T(JumpStatement, Loop, .loop_args = $3); }
 	;
 
 top_level_item

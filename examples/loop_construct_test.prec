@@ -1,0 +1,14 @@
+c_include "assert.h"
+c_include "stdio.h"
+
+u32 (&)(u32 a, u32 b, u32 res) mul = ${
+  if (a == 0)
+    return res;
+  loop(a-1, b, res+b);
+
+  assert(!"If this part of the code is ever reached, an error will appear on screen");
+};
+
+i32 (&)(void) main = ${
+    printf("%d\n", mul(4, 11, 0));
+};

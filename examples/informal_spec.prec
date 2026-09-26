@@ -22,6 +22,23 @@
 // also works for ``switch'' statements
 
 
+// Recursion:
+// You can call __recurse(...) inside function literals if you can not use the name.
+// You can use the loop statement for tail calls. It is syntactically identical to recursion:
+
+// u32 (&)(u32 a, u32 b, u32 res) mul = ${
+//   if (a == 0)
+//     return res;
+//   loop(a-1, b, res+b);
+//   assert(!"This part of the code will never be reached");
+// };
+
+// Note: In any function body that contains a 'loop' statement, all the function parameters
+// will be forcefully 'mut' (at the top level only, so: things pointed to by pointers preserve their constness).
+// This, however, doesn't affect the function pointer type compatibility (because the C standard says so).
+
+
+
 // Somewhat of a backport from C29:
 // - tuple(i32 x, i32 y)
 // - tuple(i32, i32) [equivalent to: tuple(i32 _1, i32 _2)]
