@@ -1182,7 +1182,7 @@ void t_initializer(struct Initializer *x, struct Type *t) {
                     case Access:
                         p(".%s", desig_node->desig->access);
                         break;
-                    case Index:
+                    case DesignatorIndex:
                         p("[");
                         t_expr(desig_node->desig->index->expr, true /*inline_when_possible*/);
                         p("]");
