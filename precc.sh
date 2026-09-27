@@ -23,7 +23,7 @@ error_handling() {
 
 transpile() {
     if [ "$transpiler_code" = 'REPLACE ME' ]; then
-        transpiler=./prec_internal
+        transpiler=./build/prec_internal
     else
         transpiler=prec_internal
     fi
@@ -79,9 +79,6 @@ fi
 
 cleanup() {
     rm -f "$tmp1" "$tmp2"
-    if [ "$transpiler" != "./prec_internal" ]; then
-        rm -f "$transpiler";
-    fi
 }
 
 process() {

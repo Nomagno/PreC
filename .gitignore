@@ -1,0 +1,6 @@
+*.prec.c
+a.out
+*.o
+examples/a.out
+examples/*.o
+build/

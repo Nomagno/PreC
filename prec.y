@@ -17,8 +17,10 @@
     #include <stdbool.h>
 
     #define FROM_BISON
-    #include "helpers/prec_ast.h"
-    #include "helpers/prec_transpiler.h"
+
+    // Relative path from the build/ directory
+    #include "../helpers/prec_ast.h"
+    #include "../helpers/prec_transpiler.h"
 
     int yyerror(const char *s);
     int yylex(void);
@@ -754,8 +756,6 @@ top_level
         { transpile($1); }
 
 %%
-#include <stdio.h>
-
 extern char yytext[];
 extern int column;
 

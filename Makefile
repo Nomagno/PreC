@@ -1,17 +1,25 @@
-prec_internal: prec_main.c prec.tab.c prec.tab.h lex.yy.c helpers/*.c helpers/*.h
-	gcc -g -Wall -Wenum-conversion -Wswitch-enum lex.yy.c prec_main.c prec.tab.c helpers/*.c -lfl -o prec_internal
-prec.tab.c prec.tab.h: prec.y
-	bison -d -v prec.y
-lex.yy.c:prec.l
-	flex prec.l
-install: prec_internal
+main: prec_internal
+
+install: main
 	cp precc.sh ~/.local/bin/precc
 	sed -i "s/^transpiler_code='REPLACE ME'/transpiler_code='REPLACED'/" ~/.local/bin/precc
 	chmod +x ~/.local/bin/precc
 
-	cp prec_internal ~/.local/bin/prec_internal
+	cp build/prec_internal ~/.local/bin/prec_internal
 	chmod +x ~/.local/bin/prec_internal
 
 	echo "preCC installed to ~/.local/bin/precc, with auxiliary file ~/.local/bin/prec_internal"
 clean:
-	rm -f prec_internal lex.yy.c prec.tab.c prec.tab.h prec.output examples/*.c examples/*.h examples/a.out a.out *.prec.c *.o
+	rm -rf *.prec.c a.out *.o examples/a.out examples/*.o build/
+
+
+prec_internal: prec_main.c build/prec.tab.c build/prec.tab.h build/lex.yy.c helpers/*.c helpers/*.h
+	mkdir -p build/
+	gcc -g -Wall -Wenum-conversion -Wswitch-enum prec_main.c helpers/*.c build/lex.yy.c build/prec.tab.c -lfl -o build/prec_internal
+
+build/prec.tab.c build/prec.tab.h: prec.y
+	mkdir -p build/
+	bison -d -v -o build/prec.tab.c prec.y
+build/lex.yy.c: prec.l
+	mkdir -p build/
+	flex -o build/lex.yy.c prec.l

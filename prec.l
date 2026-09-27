@@ -8,9 +8,10 @@ P                       ([Pp][+-]?{D}+)
 %option nounput
 
 %{
-
 #include <stdio.h>
-#include "helpers/prec_ast.h"
+
+// Relative path from the build/ directory
+#include "../helpers/prec_ast.h"
 
 #include "prec.tab.h"
 
