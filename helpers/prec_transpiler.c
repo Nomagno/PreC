@@ -1497,6 +1497,8 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
             DISCARD_QUALIFIERS(t);
             if (t && t->tag == Array) {
                 return_type = t->array.t;
+            } else if (t && t->tag == Reference) {
+                return_type = t->reference;
             }
             p("[");
                 t_expr(x->binOp.e2);
