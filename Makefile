@@ -1,5 +1,7 @@
-main: prec_internal
+.PHONY: main
+main: build/prec_internal
 
+.PHONY: install
 install: main
 	cp precc.sh ~/.local/bin/precc
 	sed -i "s/^transpiler_code='REPLACE ME'/transpiler_code='REPLACED'/" ~/.local/bin/precc
@@ -9,11 +11,13 @@ install: main
 	chmod +x ~/.local/bin/prec_internal
 
 	echo "preCC installed to ~/.local/bin/precc, with auxiliary file ~/.local/bin/prec_internal"
+
+.PHONY: clean
 clean:
 	rm -rf *.prec.c a.out *.o examples/a.out examples/*.o build/
 
 
-prec_internal: prec_main.c build/prec.tab.c build/prec.tab.h build/lex.yy.c helpers/*.c helpers/*.h
+build/prec_internal: prec_main.c build/prec.tab.c build/prec.tab.h build/lex.yy.c helpers/*.c helpers/*.h
 	mkdir -p build/
 	gcc -g -Wall -Wenum-conversion -Wswitch-enum prec_main.c helpers/*.c build/lex.yy.c build/prec.tab.c -lfl -o build/prec_internal
 
