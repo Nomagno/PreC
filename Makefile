@@ -1,7 +1,6 @@
-.PHONY: main
+.PHONY: main install clean
 main: build/prec_internal
 
-.PHONY: install
 install: main
 	cp precc.sh ~/.local/bin/precc
 	sed -i "s/^transpiler_code='REPLACE ME'/transpiler_code='REPLACED'/" ~/.local/bin/precc
@@ -12,7 +11,6 @@ install: main
 
 	echo "preCC installed to ~/.local/bin/precc, with auxiliary file ~/.local/bin/prec_internal"
 
-.PHONY: clean
 clean:
 	rm -rf *.prec.c a.out *.o examples/a.out examples/*.o build/
 
