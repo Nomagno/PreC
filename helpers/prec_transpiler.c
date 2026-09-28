@@ -1808,7 +1808,7 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
         bool is_constdata_access = false;
 
         char *type_name = NULL;
-        if (t && t->tag == Struct) {
+        if (t && (t->tag == Struct || t->tag == TUnion)) {
             type_name = t->user_defined_type.tag_name;
         } else if (t && t->tag == Tuple) {
             type_name = type_id(t);

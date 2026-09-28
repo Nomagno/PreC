@@ -1,0 +1,33 @@
+type t_union Animal = {
+    i32 dog;
+    f32 cat;
+} constdata {
+    f32 (&)(t_union Animal & self, t_union Animal & other) add = ${
+        mut f32 retval = 0.0;
+
+        switch(self->tag) {
+        case extract(cat, self, e):
+            retval += ^e;
+        case extract(dog, self, e):
+            retval += ^e;
+        }
+
+        switch(other->tag) {
+        case extract(cat, other, e):
+            retval += ^e;
+        case extract(dog, other, e):
+            retval += ^e;
+        }
+
+        return retval;
+    };
+};
+
+c_include "stdio.h"
+
+i32 (&)(void) main = ${
+    t_union Animal dog = TAG_WRAP(Animal, dog, 99);
+    t_union Animal cat = TAG_WRAP(Animal, cat, 0.5);
+
+    printf("%f\n", dog..add(&cat));
+};
