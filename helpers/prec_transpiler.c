@@ -125,9 +125,15 @@ struct BufferList *current_buffer;
 
 #define GROUP(...) __VA_ARGS__
 
-#define QUALIFY(_t, _q, _source) if (_t->tag == Qualifier) { _t->qualifier.qualifiers |= _q; } else { _t = DUP_T(Type, Qualifier, \
+#define QUALIFY(_t, _q, _source)\
+{  QualifierBitVector q = _q;\
+    if (_t->tag == Qualifier) {\
+        q = q | _t->qualifier.qualifiers;\
+        _t = _t->qualifier.t;\
+    }\
+    _t = DUP_T(Type, Qualifier, \
     .qualifier = { \
-        .qualifiers = _q, \
+        .qualifiers = q, \
         .t = _t \
     }, \
     .source_line = _source); \
@@ -1134,7 +1140,12 @@ bool statement_contains_loop(struct Statement *stat) {
         switch (stat->s->tag) {
         case If:
             return statement_contains_loop(stat->s->simple_if.action);
+        case IfExtract:
+            return statement_contains_loop(stat->s->simple_if.action);
         case IfElse:
+            return statement_contains_loop(stat->s->if_else.action_true)
+                   || statement_contains_loop(stat->s->if_else.action_false);
+        case IfElseExtract:
             return statement_contains_loop(stat->s->if_else.action_true)
                    || statement_contains_loop(stat->s->if_else.action_false);
         case Switch:
@@ -2583,6 +2594,105 @@ void t_statement(struct Statement *stat) {
 
             EXIT_SCOPE(stat->source_line);
             break;
+        case IfExtract: {
+            struct Type *type_to_extract = fetch_symbol_type(sym_table, stat->s->simple_if_extract.from);
+            DISCARD_QUALIFIERS(type_to_extract);
+
+
+            bool is_pointer = false;
+            bool is_mutable_pointer = false;
+            if (type_to_extract != NULL && type_to_extract->tag == Reference) {
+                is_pointer = true;
+                type_to_extract = type_to_extract->reference;
+                if (type_to_extract->tag == Qualifier && (type_to_extract->qualifier.qualifiers & Mut)) {
+                    is_mutable_pointer = true;
+                }
+                DISCARD_QUALIFIERS(type_to_extract);
+            }
+
+            if (type_to_extract == NULL || type_to_extract->tag != TUnion) {
+                fprintf(stderr, "%s:%d:%d: Compiler error: Type of extract source '%s' couldn't"
+                                "be determined to be tagged union\n",
+                        FILENAME_GRACEFUL, stat->s->simple_if_extract.action->source_line, 1, stat->s->simple_if_extract.from);
+                exit(1);
+            }
+
+            bool saved_dr = dry_run;
+            dry_run = true;
+            struct Expr *e = NEW_ACCESS(NEW_IDENTIFIER(stat->s->simple_if_extract.from, stat->s->simple_if_extract.action->source_line),
+                                       /*we need this prefix because normal user code
+                                       can NOT access tagged union fields other than 'tag' directly*/
+                                       concat("_prec_privileged_", stat->s->simple_if_extract.tag),
+                                       stat->s->simple_if_extract.action->source_line);
+            struct Type *type_of_extraction = t_expr(e);
+            dry_run = saved_dr;
+
+            // The difference in typing is simply down to convenience
+            if (is_pointer) {
+                /*Const pointer to mutable data IF the pointer is mutable, else const pointer to const data.*/
+                if (is_mutable_pointer) {
+                    QUALIFY(type_of_extraction, Mut, stat->s->simple_if_extract.action->source_line);
+                } else {
+                    DISCARD_QUALIFIERS(type_of_extraction);
+                }
+                type_of_extraction = DUP_T(Type, Reference, .reference = type_of_extraction,
+                                                            .source_line = stat->s->simple_if_extract.action->source_line);
+            } else {
+                /*Mutable data*/
+                QUALIFY(type_of_extraction, Mut, stat->s->simple_if_extract.action->source_line);
+            }
+
+
+            ENTER_SCOPE(stat->s->simple_if_extract.action->source_line);
+
+            set_src(stat->s->simple_if_extract.action->source_line);
+            tabs();
+            if (is_pointer) {
+                p("if (%s->tag == %s_%s) {", stat->s->simple_if_extract.from,
+                                            type_to_extract->user_defined_type.tag_name,
+                                            stat->s->simple_if_extract.tag);
+            } else {
+                p("if (%s.tag == %s_%s) {", stat->s->simple_if_extract.from,
+                                            type_to_extract->user_defined_type.tag_name,
+                                            stat->s->simple_if_extract.tag);
+            }
+
+            push_symbol(sym_table, stat->s->simple_if_extract.to,
+                        type_of_extraction,
+                        false /*top_level*/,
+                        global_scope_level);
+
+            set_src(stat->s->simple_if_extract.action->source_line);
+            tabs();
+            if (is_pointer) {
+                p("%s = &(%s)->union_data.%s;",
+                        t_str_type(type_of_extraction, stat->s->simple_if_extract.to, false),
+                        stat->s->simple_if_extract.from,
+                        stat->s->simple_if_extract.tag);
+            } else {
+                p("%s = (%s).union_data.%s;",
+                        t_str_type(type_of_extraction, stat->s->simple_if_extract.to, false),
+                        stat->s->simple_if_extract.from,
+                        stat->s->simple_if_extract.tag);
+            }
+            NEWLINE();
+
+            if (stat->s->simple_if_extract.action->tag == Block) {
+                t_statement(stat->s->simple_if_extract.action);
+            } else {
+                global_indent_level += 1;
+                t_statement(stat->s->simple_if_extract.action);
+                global_indent_level -= 1;
+            }
+
+            set_src(stat->s->simple_if_extract.action->source_line);
+            tabs();
+            p("}");
+            NEWLINE();
+            EXIT_SCOPE(stat->s->simple_if_extract.action_true->source_line);
+
+            break;
+        }
         case IfElse:
             if (stat->s->if_else.decl != NULL) {
                 tabs();
@@ -2647,6 +2757,115 @@ void t_statement(struct Statement *stat) {
 
                 EXIT_SCOPE(stat->s->if_else.decl->source_line);
             }
+            break;
+        case IfElseExtract:
+            struct Type *type_to_extract = fetch_symbol_type(sym_table, stat->s->if_else_extract.from);
+            DISCARD_QUALIFIERS(type_to_extract);
+
+
+            bool is_pointer = false;
+            bool is_mutable_pointer = false;
+            if (type_to_extract != NULL && type_to_extract->tag == Reference) {
+                is_pointer = true;
+                type_to_extract = type_to_extract->reference;
+                if (type_to_extract->tag == Qualifier && (type_to_extract->qualifier.qualifiers & Mut)) {
+                    is_mutable_pointer = true;
+                }
+                DISCARD_QUALIFIERS(type_to_extract);
+            }
+
+            bool saved_dr = dry_run;
+            dry_run = true;
+            struct Expr *e = NEW_ACCESS(NEW_IDENTIFIER(stat->s->if_else_extract.from, stat->s->if_else_extract.action_true->source_line),
+                                       /*we need this prefix because normal user code
+                                       can NOT access tagged union fields other than 'tag' directly*/
+                                       concat("_prec_privileged_", stat->s->if_else_extract.tag),
+                                       stat->s->if_else_extract.action_true->source_line);
+            struct Type *type_of_extraction = t_expr(e);
+            dry_run = saved_dr;
+
+            // The difference in typing is simply down to convenience
+            if (is_pointer) {
+                /*Const pointer to mutable data IF the pointer is mutable, else const pointer to const data.*/
+                if (is_mutable_pointer) {
+                    QUALIFY(type_of_extraction, Mut, stat->s->if_else_extract.action_true->source_line);
+                } else {
+                    DISCARD_QUALIFIERS(type_of_extraction);
+                }
+                type_of_extraction = DUP_T(Type, Reference, .reference = type_of_extraction,
+                                                            .source_line = stat->s->if_else_extract.action_true->source_line);
+            } else {
+                /*Mutable data*/
+                QUALIFY(type_of_extraction, Mut, stat->s->if_else_extract.action_true->source_line);
+            }
+
+
+            ENTER_SCOPE(stat->s->if_else_extract.action_true->source_line);
+
+            set_src(stat->s->if_else_extract.action_true->source_line);
+            tabs();
+
+            if (is_pointer) {
+                p("if (%s->tag == %s_%s) {", stat->s->if_else_extract.from,
+                                            type_to_extract->user_defined_type.tag_name,
+                                            stat->s->if_else_extract.tag);
+            } else {
+                p("if (%s.tag == %s_%s) {", stat->s->if_else_extract.from,
+                                            type_to_extract->user_defined_type.tag_name,
+                                            stat->s->if_else_extract.tag);
+            }
+
+            push_symbol(sym_table, stat->s->if_else_extract.to,
+                        type_of_extraction,
+                        false /*top_level*/,
+                        global_scope_level);
+
+            set_src(stat->s->if_else_extract.action_true->source_line);
+            tabs();
+            if (is_pointer) {
+                p("%s = &(%s)->union_data.%s;",
+                        t_str_type(type_of_extraction, stat->s->if_else_extract.to, false),
+                        stat->s->if_else_extract.from,
+                        stat->s->if_else_extract.tag);
+            } else {
+                p("%s = (%s).union_data.%s;",
+                        t_str_type(type_of_extraction, stat->s->if_else_extract.to, false),
+                        stat->s->if_else_extract.from,
+                        stat->s->if_else_extract.tag);
+            }
+            NEWLINE();
+
+            if (stat->s->if_else_extract.action_true->tag == Block) {
+                t_statement(stat->s->if_else_extract.action_true);
+            } else {
+                global_indent_level += 1;
+                t_statement(stat->s->if_else_extract.action_true);
+                global_indent_level -= 1;
+            }
+
+            set_src(stat->s->if_else_extract.action_true->source_line);
+            tabs();
+            p("}");
+            NEWLINE();
+            EXIT_SCOPE(stat->s->if_else_extract.action_true->source_line);
+
+            set_src(stat->s->if_else_extract.action_false->source_line);
+            tabs();
+            p("else");
+            NEWLINE();
+
+            ENTER_SCOPE(stat->s->if_else_extract.action_false->source_line);
+            if (stat->s->if_else_extract.action_false->tag == Block ||
+                (stat->s->if_else_extract.action_false->tag == Selection &&
+                    (stat->s->if_else_extract.action_false->s->tag == If
+                    || stat->s->if_else_extract.action_false->s->tag == IfElse))) {
+                t_statement(stat->s->if_else_extract.action_false);
+            } else {
+                global_indent_level += 1;
+                t_statement(stat->s->if_else_extract.action_false);
+                global_indent_level -= 1;
+            }
+            EXIT_SCOPE(stat->s->if_else.action_false->source_line);
             break;
         case Switch:
             ENTER_SCOPE(stat->source_line);
@@ -2772,26 +2991,31 @@ void t_statement(struct Statement *stat) {
         switch (stat->l->tag) {
         case CaseExtract:
             global_indent_level -= 1;
-            tabs();
 
             struct Type *type_to_extract = fetch_symbol_type(sym_table, stat->l->case_extract.from);
             DISCARD_QUALIFIERS(type_to_extract);
 
 
             bool is_pointer = false;
+            bool is_mutable_pointer = false;
             if (type_to_extract != NULL && type_to_extract->tag == Reference) {
                 is_pointer = true;
                 type_to_extract = type_to_extract->reference;
+                if (type_to_extract->tag == Qualifier && (type_to_extract->qualifier.qualifiers & Mut)) {
+                    is_mutable_pointer = true;
+                }
                 DISCARD_QUALIFIERS(type_to_extract);
             }
 
             if (type_to_extract == NULL || type_to_extract->tag != TUnion) {
-                fprintf(stderr, "%s:%d:%d: Compiler error: Type of extract source '%s' couldn't be determined to be tagged union\n",
+                fprintf(stderr, "%s:%d:%d: Compiler error: Type of extract source '%s'"
+                                "couldn't be determined to be tagged union\n",
                         FILENAME_GRACEFUL, stat->source_line, 1, stat->l->case_extract.from);
                 exit(1);
             }
 
             set_src(stat->source_line);
+            tabs();
             p("case %s_%s: {", type_to_extract->user_defined_type.tag_name, stat->l->case_extract.tag);
             NEWLINE();
             global_indent_level += 1;
@@ -2802,7 +3026,8 @@ void t_statement(struct Statement *stat) {
             bool saved_dr = dry_run;
             dry_run = true;
             struct Expr *e = NEW_ACCESS(NEW_IDENTIFIER(stat->l->case_extract.from, stat->source_line),
-                                       /*we need this prefix because normal user code can NOT access tagged union fields other than 'tag' directly*/
+                                       /*we need this prefix because normal user code can NOT
+                                        access tagged union fields other than 'tag' directly*/
                                        concat("_prec_privileged_", stat->l->case_extract.tag),
                                        stat->source_line);
             struct Type *type_of_extraction = t_expr(e);
@@ -2810,9 +3035,14 @@ void t_statement(struct Statement *stat) {
 
             // The difference in typing is simply down to convenience
             if (is_pointer) {
-                /*Const pointer to const data*/
-                DISCARD_QUALIFIERS(type_of_extraction);
-                type_of_extraction = DUP_T(Type, Reference, .reference = type_of_extraction, .source_line = stat->source_line);
+                /*Const pointer to mutable data IF the pointer is mutable, else const pointer to const data.*/
+                if (is_mutable_pointer) {
+                    QUALIFY(type_of_extraction, Mut, stat->source_line);
+                } else {
+                    DISCARD_QUALIFIERS(type_of_extraction);
+                }
+                type_of_extraction = DUP_T(Type, Reference, .reference = type_of_extraction,
+                                                            .source_line = stat->source_line);
             } else {
                 /*Mutable data*/
                 QUALIFY(type_of_extraction, Mut, stat->source_line);
@@ -2827,9 +3057,15 @@ void t_statement(struct Statement *stat) {
             set_src(stat->source_line);
             tabs();
             if (is_pointer) {
-                p("%s = &(%s)->union_data.%s;", t_str_type(type_of_extraction, stat->l->case_extract.to, false), stat->l->case_extract.from, stat->l->case_extract.tag);
+                p("%s = &(%s)->union_data.%s;",
+                        t_str_type(type_of_extraction, stat->l->case_extract.to, false),
+                        stat->l->case_extract.from,
+                        stat->l->case_extract.tag);
             } else {
-                p("%s = (%s).union_data.%s;", t_str_type(type_of_extraction, stat->l->case_extract.to, false), stat->l->case_extract.from, stat->l->case_extract.tag);
+                p("%s = (%s).union_data.%s;",
+                        t_str_type(type_of_extraction, stat->l->case_extract.to, false),
+                        stat->l->case_extract.from,
+                        stat->l->case_extract.tag);
             }
 
             set_src(stat->source_line);

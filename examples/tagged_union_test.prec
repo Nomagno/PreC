@@ -12,6 +12,7 @@ i32 (&)(void) main = ${
 
     switch (bobi->tag) {
     case extract(dog, bobi, s):
+        // Because bobi is a const pointer, we also get a const pointer to the data
         printf("%d\n", ^s);
     case extract(cat, bobi, s):
         printf("%f\n", ^s);
@@ -26,5 +27,19 @@ i32 (&)(void) main = ${
         printf("%f\n", s);
     default:
         printf("UNHANDLED CASE IN UNION A\n");
+    }
+
+    if extract(cat, bobi, s) {
+        printf("%f\n", ^s);
+    }
+
+    mut t_union A lun = TAG_WRAP(A, dog, 99);
+    t_union A mut & luna = &lun;
+    if extract(dog, luna, s) {
+        // Because luna is a mutable pointer, we also get a mutable pointer to the data
+        ^s = 7;
+        printf("%d", ^s);
+    } else {
+        printf("NOT A DOG SO NOT PRINTING\n");
     }
 };

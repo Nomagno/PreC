@@ -61,7 +61,7 @@
 //  }
 
 // tagged unions:
-// used like so (only can be accessed through ``case extract'')
+// used like so (only can be accessed through ``case extract'' and ``if extract'')
 //
 // type t_union Animal {
 //    i32 Dog;
@@ -75,6 +75,13 @@
 // case extract(Cat, x, mycat):
 //     printf("%f", mycat);
 // default:
+//     printf("UNHANDLED UNION MEMBER!!!!");
+// }
+//
+// /*And also:*/
+// if extract(Dog, x, mydog) {
+//    printf("%d", mydog);
+// } else {
 //     printf("UNHANDLED UNION MEMBER!!!!");
 // }
 

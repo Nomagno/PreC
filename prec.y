@@ -1,15 +1,16 @@
-%expect 4
-// We expect exactly 4 conflicts for the following reason:
+%expect 5
+// We expect exactly 5 conflicts for the following reason:
 // Traditionally, in C, there is ONE shift/reduct conflict that appears in the grammar
 // this conflict is between IF and IF-ELSE, and the correct behaviour is to always shift,
 // which coincides with YACC/Bison's default behaviour. So we indicate that we expect ONE conflict.
-// In PreC, however, the C29 feature allowing to declare variables inside statements is added.
-// this makes it so that there are FOUR variants of an if statement, rather than one (and the corresponding if-else variants):
+// In PreC, however, the C29 feature allowing to declare variables inside statements is added, plus tagged union extraction.
+// this makes it so that there are FIVE variants of an if statement, rather than one (and the corresponding if-else variants):
 // - if (expr) x else y;
 // - if (decl) x else y;
 // - if (decl;) x else y;
 // - if (decl; expr) x else y;
-// So we indicate that we expect FOUR conflicts.
+// - if extract(tag, from, to) x else y;
+// So we indicate that we expect FIVE conflicts.
 
 %{
     #include <stdio.h>
@@ -667,6 +668,11 @@ expression_statement
 selection_statement
 	: IF '(' declaration ')' statement
 	    { $$ = DUP_T(SelectionStatement, If, .simple_if = { .decl = $3, .action = $5 }); }
+	| IF EXTRACT '(' IDENTIFIER ',' IDENTIFIER ',' IDENTIFIER ')' statement
+	    { $$ = DUP_T(SelectionStatement, IfExtract, .simple_if_extract = { .tag = $4,
+	                                                                       .from = $6,
+	                                                                       .to = $8,
+	                                                                       .action = $10 }); }
 	| IF '(' declaration ';' ')' statement
 	    { $$ = DUP_T(SelectionStatement, If, .simple_if = { .decl = $3, .action = $6 }); }
 	| IF '(' declaration ';' expression ')' statement
@@ -675,6 +681,12 @@ selection_statement
 	    { $$ = DUP_T(SelectionStatement, If, .simple_if = { .clause = $3, .action = $5 }); }
 	| IF '(' declaration ')' statement ELSE statement
 	    { $$ = DUP_T(SelectionStatement, IfElse, .if_else = { .decl = $3, .action_true = $5, .action_false = $7 }); }
+	| IF EXTRACT '(' IDENTIFIER ',' IDENTIFIER ',' IDENTIFIER ')' statement ELSE statement
+	    { $$ = DUP_T(SelectionStatement, IfElseExtract, .if_else_extract = { .tag = $4,
+	                                                                       .from = $6,
+	                                                                       .to = $8,
+	                                                                       .action_true = $10,
+	                                                                       .action_false = $12 }); }
 	| IF '(' declaration ';' ')' statement ELSE statement
 	    { $$ = DUP_T(SelectionStatement, IfElse, .if_else = { .decl = $3, .action_true = $6, .action_false = $8 }); }
 	| IF '(' declaration ';' expression ')' statement ELSE statement

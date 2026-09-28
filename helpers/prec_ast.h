@@ -399,7 +399,7 @@ struct Statement {
 };
 
 struct SelectionStatement {
-    enum { If='i', IfElse='e', Switch='s' } tag;
+    enum { If='i', IfElse='e', IfExtract='I', IfElseExtract='E', Switch='s' } tag;
     union {
         struct {
             struct Declaration *decl;
@@ -407,11 +407,26 @@ struct SelectionStatement {
             struct Statement *action;
         } simple_if;
         struct {
+            char *tag;
+            char *from;
+            char *to;
+
+            struct Statement *action;
+        } simple_if_extract;
+        struct {
             struct Declaration *decl;
             struct Expr *clause;
             struct Statement *action_true;
             struct Statement *action_false;
         } if_else;
+        struct {
+            char *tag;
+            char *from;
+            char *to;
+
+            struct Statement *action_true;
+            struct Statement *action_false;
+        } if_else_extract;
         struct {
             struct Declaration *decl;
             struct Expr *clause;
