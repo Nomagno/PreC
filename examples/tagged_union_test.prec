@@ -29,7 +29,7 @@ i32 (&)(void) main = ${
         printf("UNHANDLED CASE IN UNION A\n");
     }
 
-    if extract(cat, bobi, s) {
+    if extract(cat, &bob, s) {
         printf("%f\n", ^s);
     }
 

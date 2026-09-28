@@ -408,7 +408,7 @@ struct SelectionStatement {
         } simple_if;
         struct {
             char *tag;
-            char *from;
+            struct Expr *from;
             char *to;
 
             struct Statement *action;
@@ -421,7 +421,7 @@ struct SelectionStatement {
         } if_else;
         struct {
             char *tag;
-            char *from;
+            struct Expr *from;
             char *to;
 
             struct Statement *action_true;

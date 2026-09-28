@@ -952,6 +952,8 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
         } else if (x->tag == TUnion) {
             // Tagged unions are internally structs
             p_t("struct ");
+            if (x->user_defined_type.const_data != NULL)
+                dispatch_constdata(x->user_defined_type.tag_name, x->user_defined_type.const_data, false /*new_type*/, /*``local constdata'' auto-overrides this to false*/ true /*top_level*/);
         } else {
             p_t("union ");
         }
@@ -2597,7 +2599,11 @@ void t_statement(struct Statement *stat) {
             EXIT_SCOPE(stat->source_line);
             break;
         case IfExtract: {
-            struct Type *type_to_extract = fetch_symbol_type(sym_table, stat->s->simple_if_extract.from);
+            bool saved_dr = dry_run;
+            dry_run = true;
+            struct Type *type_to_extract = t_expr(stat->s->simple_if_extract.from);
+            dry_run = saved_dr;
+
             DISCARD_QUALIFIERS(type_to_extract);
 
 
@@ -2613,15 +2619,15 @@ void t_statement(struct Statement *stat) {
             }
 
             if (type_to_extract == NULL || type_to_extract->tag != TUnion) {
-                fprintf(stderr, "%s:%d:%d: Compiler error: Type of extract source '%s' couldn't"
-                                "be determined to be tagged union\n",
-                        FILENAME_GRACEFUL, stat->s->simple_if_extract.action->source_line, 1, stat->s->simple_if_extract.from);
+                fprintf(stderr, "%s:%d:%d: Compiler error: Type of extract source couldn't"
+                                " be determined to be tagged union\n",
+                        FILENAME_GRACEFUL, stat->s->simple_if_extract.from->source_line, 1);
                 exit(1);
             }
 
-            bool saved_dr = dry_run;
+            saved_dr = dry_run;
             dry_run = true;
-            struct Expr *e = NEW_ACCESS(NEW_IDENTIFIER(stat->s->simple_if_extract.from, stat->s->simple_if_extract.action->source_line),
+            struct Expr *e = NEW_ACCESS(stat->s->simple_if_extract.from,
                                        /*we need this prefix because normal user code
                                        can NOT access tagged union fields other than 'tag' directly*/
                                        concat("_prec_privileged_", stat->s->simple_if_extract.tag),
@@ -2650,13 +2656,17 @@ void t_statement(struct Statement *stat) {
             set_src(stat->s->simple_if_extract.action->source_line);
             tabs();
             if (is_pointer) {
-                p("if (%s->tag == %s_%s) {", stat->s->simple_if_extract.from,
-                                            type_to_extract->user_defined_type.tag_name,
-                                            stat->s->simple_if_extract.tag);
+                p("if (");
+                    t_expr(stat->s->simple_if_extract.from);
+                p("->tag == %s_%s) {",
+                    type_to_extract->user_defined_type.tag_name,
+                    stat->s->simple_if_extract.tag);
             } else {
-                p("if (%s.tag == %s_%s) {", stat->s->simple_if_extract.from,
-                                            type_to_extract->user_defined_type.tag_name,
-                                            stat->s->simple_if_extract.tag);
+                p("if ((");
+                    t_expr(stat->s->simple_if_extract.from);
+                p(").tag == %s_%s) {",
+                    type_to_extract->user_defined_type.tag_name,
+                    stat->s->simple_if_extract.tag);
             }
 
             push_symbol(sym_table, stat->s->simple_if_extract.to,
@@ -2667,15 +2677,13 @@ void t_statement(struct Statement *stat) {
             set_src(stat->s->simple_if_extract.action->source_line);
             tabs();
             if (is_pointer) {
-                p("%s = &(%s)->union_data.%s;",
-                        t_str_type(type_of_extraction, stat->s->simple_if_extract.to, false),
-                        stat->s->simple_if_extract.from,
-                        stat->s->simple_if_extract.tag);
+                p("%s = &(", t_str_type(type_of_extraction, stat->s->simple_if_extract.to, false));
+                    t_expr(stat->s->simple_if_extract.from);
+                p(")->union_data.%s;", stat->s->simple_if_extract.tag);
             } else {
-                p("%s = (%s).union_data.%s;",
-                        t_str_type(type_of_extraction, stat->s->simple_if_extract.to, false),
-                        stat->s->simple_if_extract.from,
-                        stat->s->simple_if_extract.tag);
+                p("%s = &(", t_str_type(type_of_extraction, stat->s->simple_if_extract.to, false));
+                    t_expr(stat->s->simple_if_extract.from);
+                p(").union_data.%s;", stat->s->simple_if_extract.tag);
             }
             NEWLINE();
 
@@ -2761,7 +2769,11 @@ void t_statement(struct Statement *stat) {
             }
             break;
         case IfElseExtract:
-            struct Type *type_to_extract = fetch_symbol_type(sym_table, stat->s->if_else_extract.from);
+            bool saved_dr = dry_run;
+            dry_run = true;
+            struct Type *type_to_extract = t_expr(stat->s->if_else_extract.from);
+            dry_run = saved_dr;
+
             DISCARD_QUALIFIERS(type_to_extract);
 
 
@@ -2776,9 +2788,16 @@ void t_statement(struct Statement *stat) {
                 DISCARD_QUALIFIERS(type_to_extract);
             }
 
-            bool saved_dr = dry_run;
+            if (type_to_extract == NULL || type_to_extract->tag != TUnion) {
+                fprintf(stderr, "%s:%d:%d: Compiler error: Type of extract source couldn't"
+                                " be determined to be tagged union\n",
+                        FILENAME_GRACEFUL, stat->s->if_else_extract.from->source_line, 1);
+                exit(1);
+            }
+
+            saved_dr = dry_run;
             dry_run = true;
-            struct Expr *e = NEW_ACCESS(NEW_IDENTIFIER(stat->s->if_else_extract.from, stat->s->if_else_extract.action_true->source_line),
+            struct Expr *e = NEW_ACCESS(stat->s->if_else_extract.from,
                                        /*we need this prefix because normal user code
                                        can NOT access tagged union fields other than 'tag' directly*/
                                        concat("_prec_privileged_", stat->s->if_else_extract.tag),
@@ -2808,13 +2827,17 @@ void t_statement(struct Statement *stat) {
             tabs();
 
             if (is_pointer) {
-                p("if (%s->tag == %s_%s) {", stat->s->if_else_extract.from,
-                                            type_to_extract->user_defined_type.tag_name,
-                                            stat->s->if_else_extract.tag);
+                p("if (");
+                    t_expr(stat->s->if_else_extract.from);
+                p("->tag == %s_%s) {",
+                    type_to_extract->user_defined_type.tag_name,
+                    stat->s->if_else_extract.tag);
             } else {
-                p("if (%s.tag == %s_%s) {", stat->s->if_else_extract.from,
-                                            type_to_extract->user_defined_type.tag_name,
-                                            stat->s->if_else_extract.tag);
+                p("if ((");
+                    t_expr(stat->s->if_else_extract.from);
+                p(").tag == %s_%s) {",
+                    type_to_extract->user_defined_type.tag_name,
+                    stat->s->if_else_extract.tag);
             }
 
             push_symbol(sym_table, stat->s->if_else_extract.to,
@@ -2825,15 +2848,13 @@ void t_statement(struct Statement *stat) {
             set_src(stat->s->if_else_extract.action_true->source_line);
             tabs();
             if (is_pointer) {
-                p("%s = &(%s)->union_data.%s;",
-                        t_str_type(type_of_extraction, stat->s->if_else_extract.to, false),
-                        stat->s->if_else_extract.from,
-                        stat->s->if_else_extract.tag);
+                p("%s = &(", t_str_type(type_of_extraction, stat->s->if_else_extract.to, false));
+                    t_expr(stat->s->if_else_extract.from);
+                p(")->union_data.%s;", stat->s->if_else_extract.tag);
             } else {
-                p("%s = (%s).union_data.%s;",
-                        t_str_type(type_of_extraction, stat->s->if_else_extract.to, false),
-                        stat->s->if_else_extract.from,
-                        stat->s->if_else_extract.tag);
+                p("%s = &(", t_str_type(type_of_extraction, stat->s->if_else_extract.to, false));
+                    t_expr(stat->s->if_else_extract.from);
+                p(").union_data.%s;", stat->s->if_else_extract.tag);
             }
             NEWLINE();
 

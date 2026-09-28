@@ -493,6 +493,8 @@ base_type
 	    { $$ = DUP_T(Type, Union, .user_defined_type = { .tag_name = $2 }); }
     | T_UNION  IDENTIFIER
 	    { $$ = DUP_T(Type, TUnion, .user_defined_type = { .tag_name = $2 }); }
+    | T_UNION  IDENTIFIER constdata_block
+	    { $$ = DUP_T(Type, TUnion, .user_defined_type = { .tag_name = $2, .const_data = $3 }); }
     | ENUM   IDENTIFIER
 	    { $$ = DUP_T(Type, Enum, .user_defined_type = { .tag_name = $2 }); }
 	;
@@ -533,6 +535,8 @@ type_definition
         { $$ = DUP_T(TypeDefinition, NewUnion, .struct_or_union_def = { .name = $3, .declarations = $6 }); }
     | TYPE T_UNION IDENTIFIER  '=' '{' struct_declaration_list '}' ';'
         { $$ = DUP_T(TypeDefinition, NewTUnion, .struct_or_union_def = { .name = $3, .declarations = $6 }); }
+    | TYPE T_UNION IDENTIFIER '=' '{' struct_declaration_list '}' constdata_block ';'
+        { $$ = DUP_T(TypeDefinition, NewTUnion, .struct_or_union_def = { .name = $3, .declarations = $6, .const_data = $8  }); }
     | TYPE ENUM IDENTIFIER   '=' '{' enumerator_list '}' ';'
         { $$ = DUP_T(TypeDefinition, NewEnum, .enum_def = { .name = $3, .values = $6 }); }
     | TYPE ENUM IDENTIFIER   '=' '{' enumerator_list ',' '}' ';'
@@ -668,7 +672,7 @@ expression_statement
 selection_statement
 	: IF '(' declaration ')' statement
 	    { $$ = DUP_T(SelectionStatement, If, .simple_if = { .decl = $3, .action = $5 }); }
-	| IF EXTRACT '(' IDENTIFIER ',' IDENTIFIER ',' IDENTIFIER ')' statement
+	| IF EXTRACT '(' IDENTIFIER ',' expression ',' IDENTIFIER ')' statement
 	    { $$ = DUP_T(SelectionStatement, IfExtract, .simple_if_extract = { .tag = $4,
 	                                                                       .from = $6,
 	                                                                       .to = $8,
@@ -681,7 +685,7 @@ selection_statement
 	    { $$ = DUP_T(SelectionStatement, If, .simple_if = { .clause = $3, .action = $5 }); }
 	| IF '(' declaration ')' statement ELSE statement
 	    { $$ = DUP_T(SelectionStatement, IfElse, .if_else = { .decl = $3, .action_true = $5, .action_false = $7 }); }
-	| IF EXTRACT '(' IDENTIFIER ',' IDENTIFIER ',' IDENTIFIER ')' statement ELSE statement
+	| IF EXTRACT '(' IDENTIFIER ',' expression ',' IDENTIFIER ')' statement ELSE statement
 	    { $$ = DUP_T(SelectionStatement, IfElseExtract, .if_else_extract = { .tag = $4,
 	                                                                       .from = $6,
 	                                                                       .to = $8,
