@@ -1035,7 +1035,6 @@ void t_typedefinition(struct TypeDefinition *tdef, bool top_level);
 
 void t_block(struct Block *b, struct TypeParamList *param_list) {
     if (b == NULL) {
-        set_src(b->source_line);
         tabs();
         p("{ }");
         return;
@@ -1736,32 +1735,35 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
                 // using the type table too
 
                 TypeTablePtr entry = fetch_type(type_table, type_name);
-                struct DeclarationList *decls = entry->regulardata;
 
-                bool found_var = false;
+                if (entry != NULL) {
+                    struct DeclarationList *decls = entry->regulardata;
 
-                assert(decls != NULL);
-                REWIND_LIST(decls);
-                while (!found_var && decls != NULL) {
-                    struct Type *type = decls->decl->type;
-                    struct VarList *vars = decls->decl->vars;
+                    bool found_var = false;
 
-                    assert(vars != NULL);
-                    REWIND_LIST(vars);
-                    while (!found_var && vars != NULL) {
-                        // fprintf(stderr, "checking %s", vars->decl->name);
-                        if (vars->decl->name != NULL && strcmp(vars->decl->name, x->struct_access_deref.member) == 0) {
-                            found_var = true;
-                            // fprintf(stderr, " match %s", t_str_type(type, NULL, false));
-                            return_type = type;
+                    assert(decls != NULL);
+                    REWIND_LIST(decls);
+                    while (!found_var && decls != NULL) {
+                        struct Type *type = decls->decl->type;
+                        struct VarList *vars = decls->decl->vars;
+
+                        assert(vars != NULL);
+                        REWIND_LIST(vars);
+                        while (!found_var && vars != NULL) {
+                            // fprintf(stderr, "checking %s", vars->decl->name);
+                            if (vars->decl->name != NULL && strcmp(vars->decl->name, x->struct_access_deref.member) == 0) {
+                                found_var = true;
+                                // fprintf(stderr, " match %s", t_str_type(type, NULL, false));
+                                return_type = type;
+                            }
+                            // fprintf(stderr, "\n");
+
+                            vars = vars->next;
                         }
-                        // fprintf(stderr, "\n");
-
-                        vars = vars->next;
+                        decls = decls->next;
                     }
-                    decls = decls->next;
+                    // fprintf(stderr, "\n");
                 }
-                // fprintf(stderr, "\n");
             }
 
             p("%s", x->struct_access_deref.member);
