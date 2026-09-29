@@ -1,0 +1,9 @@
+// Struct A doesn't exist so only its constdata may be accessed:
+// it could be that we are defining constdata over an empty struct,
+// or this can be used to add constdata to a struct only available from a C library
+// as well
+struct A constdata {
+    i32 k = 0;
+} __impl__;
+
+i32 n = <struct A>{0}.k;

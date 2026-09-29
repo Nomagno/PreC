@@ -1743,28 +1743,29 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
 
                     bool found_var = false;
 
-                    assert(decls != NULL);
-                    REWIND_LIST(decls);
-                    while (!found_var && decls != NULL) {
-                        struct Type *type = decls->decl->type;
-                        struct VarList *vars = decls->decl->vars;
+                    if (decls != NULL) {
+                        REWIND_LIST(decls);
+                        while (!found_var && decls != NULL) {
+                            struct Type *type = decls->decl->type;
+                            struct VarList *vars = decls->decl->vars;
 
-                        assert(vars != NULL);
-                        REWIND_LIST(vars);
-                        while (!found_var && vars != NULL) {
-                            // fprintf(stderr, "checking %s", vars->decl->name);
-                            if (vars->decl->name != NULL && strcmp(vars->decl->name, x->struct_access_deref.member) == 0) {
-                                found_var = true;
-                                // fprintf(stderr, " match %s", t_str_type(type, NULL, false));
-                                return_type = type;
+                            assert(vars != NULL);
+                            REWIND_LIST(vars);
+                            while (!found_var && vars != NULL) {
+                                // fprintf(stderr, "checking %s", vars->decl->name);
+                                if (vars->decl->name != NULL && strcmp(vars->decl->name, x->struct_access_deref.member) == 0) {
+                                    found_var = true;
+                                    // fprintf(stderr, " match %s", t_str_type(type, NULL, false));
+                                    return_type = type;
+                                }
+                                // fprintf(stderr, "\n");
+
+                                vars = vars->next;
                             }
-                            // fprintf(stderr, "\n");
-
-                            vars = vars->next;
+                            decls = decls->next;
                         }
-                        decls = decls->next;
+                        // fprintf(stderr, "\n");
                     }
-                    // fprintf(stderr, "\n");
                 }
             }
 
@@ -1863,23 +1864,24 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
 
                 bool found_var = false;
 
-                assert(decls != NULL);
-                REWIND_LIST(decls);
-                while (!found_var && decls != NULL) {
-                    struct Type *type = decls->decl->type;
-                    struct VarList *vars = decls->decl->vars;
+                if (decls != NULL) {
+                    REWIND_LIST(decls);
+                    while (!found_var && decls != NULL) {
+                        struct Type *type = decls->decl->type;
+                        struct VarList *vars = decls->decl->vars;
 
-                    assert(vars != NULL);
-                    REWIND_LIST(vars);
-                    while (!found_var && vars != NULL) {
-                        if (vars->decl->name != NULL && strcmp(vars->decl->name, x->struct_access_deref.member) == 0) {
-                            found_var = true;
-                            return_type = type;
+                        assert(vars != NULL);
+                        REWIND_LIST(vars);
+                        while (!found_var && vars != NULL) {
+                            if (vars->decl->name != NULL && strcmp(vars->decl->name, x->struct_access_deref.member) == 0) {
+                                found_var = true;
+                                return_type = type;
+                            }
+
+                            vars = vars->next;
                         }
-
-                        vars = vars->next;
+                        decls = decls->next;
                     }
-                    decls = decls->next;
                 }
             }
 
@@ -2095,9 +2097,17 @@ void dispatch_constdata(char *type_name, struct DeclarationList *data, bool new_
     TypeTablePtr entry = fetch_type(type_table, type_name);
 
     if (entry == NULL) {
-        fprintf(stderr, "%s:%d:%d: Compiler error: Attempted to add constdata to nonexistant type %s... what?\n",
-                FILENAME_GRACEFUL, data->source_line, 1, type_name);
-        exit(1);
+        // Dispatch a no-regulardata entry if it doesn't exist.
+        // We are presumed to be defining constdata for a C foreign sturct and such.
+        // Though I guess it can also be used for defining empty structs that ONLY have constdata :3 
+        push_type(type_table, type_name,
+                    NULL, NULL,
+                    top_level, global_scope_level);
+        entry = fetch_type(type_table, type_name);
+
+        // fprintf(stderr, "%s:%d:%d: Compiler error: Attempted to add constdata to nonexistant type %s... what?\n",
+        //         FILENAME_GRACEFUL, data->source_line, 1, type_name);
+        // exit(1);
     }
 
     struct DeclarationList *append_to_list = NULL;
@@ -2394,6 +2404,12 @@ void t_typedefinition(struct TypeDefinition *tdef, bool top_level) {
         struct DeclarationList *node_constdata = tdef->struct_or_union_def.const_data;
 
         if (tdef->struct_or_union_def.name && node_regulardata) {
+            // TODO:
+            //  If the entry already exists and has null regulardata, we are definitely trying to
+            // obscure an external struct type defined in C with constdata defined in PreC.
+            // Perhaps error out?
+            // TypeTablePtr entry = fetch_type(type_table, type_name);
+
             push_type(type_table, tdef->struct_or_union_def.name,
                         node_regulardata, NULL,
                         top_level, global_scope_level);
