@@ -1,0 +1,23 @@
+mut i32 a = 0;
+
+type struct A = {
+  i32 x;
+} constdata {
+  i32 k = 8;
+  struct A (&)(void) new = ${
+    a = 1;
+    return <struct A>{99};
+  };
+};
+
+c_include "stdio.h"
+i32 (&)(void) main = ${
+  i32 foo = { <struct A>{0}.new().k };
+  printf("%d\n", a);
+  // Prints 0 or 1?
+  // Answer: it prints 1, because k gets inlined since its constdata,
+  //   and as a consequence the side effects of new() do not happen:
+  // i32 foo = 8;
+  // Is this a bug?
+  /// ... is it? Well I do not have any plans to fix it right now. xD
+};
