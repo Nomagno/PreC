@@ -1490,8 +1490,17 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
             t_expr(x->binOp.e1); p("!="); t_expr(x->binOp.e2);
             break;
         case Assign:
-            t_expr(x->binOp.e1);
-            p("=");
+            bool saved_dr = dry_run;
+            dry_run = true;
+            struct Type *lhs_type = t_expr(x->binOp.e1);
+            dry_run = saved_dr;
+
+            bool is_void = lhs_type->tag == Void || (lhs_type->tag == Qualifier && lhs_type->qualifier.t->tag == Void);
+            // Assigning to void vars is a no-op.
+            if (!is_void) {
+                t_expr(x->binOp.e1);
+                p("=");
+            }
             return_type = t_expr(x->binOp.e2);
             break;
         case AssignAdd:
@@ -2458,8 +2467,12 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
             tabs();
         }
         set_src(node->decl->source_line);
+
+        bool is_void = decl->type->tag == Void || (decl->type->tag == Qualifier && decl->type->qualifier.t->tag == Void);
+        bool is_fun_pointer = decl->type->tag == FunPointer;
+
         if (node->decl->val != NULL) {
-            if (top_level && decl->type->tag == FunPointer && node->decl->val->tag == Code) {
+            if (top_level && is_fun_pointer && node->decl->val->tag == Code) {
                 // top level functions with no qualifiers and a function initializer
                 // get implicitly converted to declarations/definitions
                 push_symbol(sym_table, node->decl->name, decl->type, top_level, global_scope_level);
@@ -2475,7 +2488,11 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
                     p("inline ");
                 }
 
-                bool contains_loop = statement_contains_loop(WRAP_BLOCK(node->decl->val->code));
+                bool contains_loop = false;
+                if (node->decl->val->code != NULL) {
+                    contains_loop = statement_contains_loop(WRAP_BLOCK(node->decl->val->code));
+                }
+
                 if (contains_loop) {
                     struct TypeParamList *params = decl->type->fun_pointer.param_list;
                     REWIND_LIST(params);
@@ -2512,8 +2529,12 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
             } else {
                 push_symbol(sym_table, node->decl->name, decl->type, top_level, global_scope_level);
 
-                p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, false));
-                p(" = ");
+                if (is_void) {
+                    /*In the case of a void variable, only register the symbol and translate the initializer, not the variable itself*/;
+                } else {
+                    p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, false));
+                    p(" = ");
+                }
                 set_src(node->decl->val->source_line);
                 t_initializer(node->decl->val, decl->type);
 
@@ -2521,7 +2542,7 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
                 else          { p(";"); NEWLINE(); }
             }
         } else {
-            if (top_level && decl->type->tag == FunPointer) {
+            if (top_level && is_fun_pointer) {
                 // top level functions with no qualifiers and a function initializer
                 // get implicitly converted to declarations/definitions
                 push_symbol(sym_table, node->decl->name, decl->type, top_level, global_scope_level);
@@ -2533,16 +2554,20 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
             } else {
                 push_symbol(sym_table, node->decl->name, decl->type, top_level, global_scope_level);
 
-                p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, false));
+                if (is_void) {
+                    /*In the case of a void variable with no initializer, only register the symbol*/;
+                } else {
+                    p("%s%s", storage_class, t_str_type(decl->type, node->decl->name, false));
 
-                // in preC, all non-extern variables are zero-initialized by default if no initializer is specified
-                // Check if it's a VLA (if any of the array types contained within are not 100% constant expressions). If it's the case, do not print the initializer
-                // as it's illegal C99 to initialize a VLA
-                if (decl->class != Extern && is_const_sized_type(decl->type))
-                    p(" = {0}");
+                    // in preC, all non-extern variables are zero-initialized by default if no initializer is specified
+                    // Check if it's a VLA (if any of the array types contained within are not 100% constant expressions). If it's the case, do not print the initializer
+                    // as it's illegal C99 to initialize a VLA
+                    if (decl->class != Extern && is_const_sized_type(decl->type))
+                        p(" = {0}");
 
-                if (freeform) { p("; "); }
-                else          { p(";"); NEWLINE(); }
+                    if (freeform) { p("; "); }
+                    else          { p(";"); NEWLINE(); }
+                }
             }
         }
         node = node->next;
@@ -2972,7 +2997,7 @@ void t_statement(struct Statement *stat) {
                 loop_params = loop_params->next;
                 signature_params = signature_params->next;
             }
-            
+
             set_src(stat->source_line);
             tabs();
             p("goto _prec_function_start;");
@@ -2989,12 +3014,32 @@ void t_statement(struct Statement *stat) {
                 dry_run = saved_dr;
             }
 
-            if (t != NULL && t->tag == Void) {
+            bool is_identifier = stat->j->return_stat.expr != NULL && stat->j->return_stat.expr->tag == Identifier;
+            bool is_identifier_reference = stat->j->return_stat.expr != NULL
+                                            && stat->j->return_stat.expr->tag == Unary
+                                            && stat->j->return_stat.expr->unOp.tag == Ref
+                                            && stat->j->return_stat.expr->unOp.e->tag == Identifier;
+
+            if (is_identifier && t && t->tag == Void) {
+                // Ignore return of void variable
+                tabs();
+                p("return;");
+                NEWLINE();
+            } else if (is_identifier_reference && t && t->tag == Reference
+                        && ((t->reference->tag == Qualifier && t->reference->qualifier.t->tag == Void)
+                            || (t->reference->tag == Void))
+                      )
+            {
+                // Practical decision: addess of void variable is NULL.
+                tabs();
+                p("return (void *)0;");
+                NEWLINE();
+            } else if (t != NULL && t->tag == Void) {
                 tabs();
                 t_expr(stat->j->return_stat.expr);
                 p(";");
 
-                p(" return;");
+                p("return;");
 
                 NEWLINE();
             } else {
