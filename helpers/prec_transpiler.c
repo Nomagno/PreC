@@ -1495,7 +1495,7 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
             struct Type *lhs_type = t_expr(x->binOp.e1);
             dry_run = saved_dr;
 
-            bool is_void = lhs_type->tag == Void || (lhs_type->tag == Qualifier && lhs_type->qualifier.t->tag == Void);
+            bool is_void = lhs_type && (lhs_type->tag == Void || (lhs_type->tag == Qualifier && lhs_type->qualifier.t->tag == Void));
             // Assigning to void vars is a no-op.
             if (!is_void) {
                 t_expr(x->binOp.e1);
