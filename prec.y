@@ -81,7 +81,10 @@
     uintmax_t uint_constant;
 }
 
-%type <expression> primary_expression postfix_expression unary_expression cast_expression arithmetic_expression conditional_expression assignment_expression expression
+%type <expression> primary_expression postfix_expression unary_expression cast_expression
+%type <expression> arithmetic_expression conditional_expression
+%type <expression> assignment_expression non_comma_expression expression
+
 %type <const_expression> constant_expression
 
 %type <var_decl> id_decl
@@ -113,8 +116,8 @@
 %type <storage_class> storage_class
 %type <type> type regular_type concrete_type base_type
 %type <qualifier> type_qualifier
-%type <type_param_list> parameter_type_list parameter_list
-%type <type_param> parameter_declaration
+%type <type_param_list> parameter_type_list parameter_list parameter_mandatory_name_type_list parameter_mandatory_name_list
+%type <type_param> parameter_declaration parameter_mandatory_name_declaration
 %type <enum_list> enumerator_list
 %type <enum_val> enumerator
 
@@ -203,8 +206,6 @@ postfix_expression
 	    { $$ = DUP_T(Expr, StructDerefMethod, .struct_access_deref = { .e = $1, .member = $3, .method_args = NULL}); }
 	| postfix_expression PTR_METHOD_OP IDENTIFIER '(' argument_expression_list ')'
 	    { $$ = DUP_T(Expr, StructDerefMethod, .struct_access_deref = { .e = $1, .member = $3, .method_args = $5}); }
-	| '<' type '>' compound_literal_initializer
-	    { $$ = DUP_T(Expr, CompoundLiteral, .compound_literal = { .type = $2, .init = $4 } ); }
 	;
 
 argument_expression_list
@@ -238,6 +239,10 @@ cast_expression
 	    { $$ = $1; }
 	| '<' type '>' cast_expression
 	    { $$ = DUP_T(Expr, Cast, .cast = { .type = $2, .e = $4 }); }
+	| '<' type '>' compound_literal_initializer
+	    { $$ = DUP_T(Expr, CompoundLiteral, .compound_literal = { .type = $2, .init = $4 } ); }
+	| '<' parameter_mandatory_name_type_list '>' compound_literal_initializer
+	    { $$ = DUP_T(Expr, CompoundLiteral, .compound_literal = { .type = NULL, .init = $4 } ); }
 	;
 
 arithmetic_expression
@@ -303,12 +308,18 @@ assignment_expression
 	    { $$ = BIN_EXPR(Assign, $1, $3) }
 	;
 
+non_comma_expression
+    : assignment_expression
+    ;
+
 expression
-	: assignment_expression
+	: non_comma_expression
 	    { $$ = $1; }
-	| expression ',' assignment_expression
+	| expression ',' non_comma_expression
 	    { $$ = BIN_EXPR(Sequence, $1, $3) }
 	;
+
+
 
 declaration
     : type var_list
@@ -334,14 +345,8 @@ id_decl
 initializer
     : assignment_expression
         { $$ = DUP_T(Initializer, Expr, .expr = $1); }
-    | '{' initializer_list '}'
-        { $$ = DUP_T(Initializer, Data, .data = $2); }
-    | '{' initializer_list ',' '}'
-        { $$ = DUP_T(Initializer, Data, .data = $2); }
-    | '$' compound_statement
-        { $$ = DUP_T(Initializer, Code, .code = $2); }
-    | INLINE '$' compound_statement
-        { $$ = DUP_T(Initializer, Code, .code = $3, .is_inline = true); }
+    | compound_literal_initializer
+        { $$ = $1; }
     ;
 
 compound_literal_initializer
@@ -524,6 +529,33 @@ parameter_declaration
 	    { $$ = DUP((struct TypeParam) { .type = $1, .name = NULL }); }
 	| type IDENTIFIER
 	    { $$ = DUP((struct TypeParam) { .type = $1, .name = $2 }); }
+	;
+
+parameter_mandatory_name_type_list
+	:
+	    { $$ = NULL; }
+	| parameter_mandatory_name_list
+	    { $$ = $1; }
+	| parameter_mandatory_name_list ','
+	    { $$ = $1; }
+	| parameter_mandatory_name_list ',' ELLIPSIS
+	    { $1->next = DUP((struct TypeParamList){ .param = NULL, .prev = $1, .next = NULL }); $$ = $1->next; }
+	| parameter_mandatory_name_list ',' ELLIPSIS ','
+	    { $1->next = DUP((struct TypeParamList){ .param = NULL, .prev = $1, .next = NULL }); $$ = $1->next; }
+	;
+
+parameter_mandatory_name_list
+	: parameter_mandatory_name_declaration
+	    { $$ = DUP((struct TypeParamList){ .param = $1, .next = NULL }); }
+	| parameter_mandatory_name_list ',' parameter_mandatory_name_declaration
+	    { $1->next = DUP((struct TypeParamList){ .param = $3, .prev = $1, .next = NULL }); $$ = $1->next; }
+	;
+
+parameter_mandatory_name_declaration
+	: type IDENTIFIER
+	    { $$ = DUP((struct TypeParam) { .type = $1, .name = $2 }); }
+	| IDENTIFIER
+	    { $$ = DUP((struct TypeParam) { .type = NULL, .name = $1 }); }
 	;
 
 type_definition
