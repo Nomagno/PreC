@@ -245,7 +245,11 @@ cast_expression
 	| '<' type '>' compound_literal_initializer
 	    { $$ = DUP_T(Expr, CompoundLiteral, .compound_literal = { .type = $2, .init = $4 } ); }
 	| '<' parameter_mandatory_name_type_list '>' compound_literal_initializer
-	    { $$ = DUP_T(Expr, CompoundLiteral, .compound_literal = { .type = NULL, .init = $4 } ); }
+	    { $$ = DUP_T(Expr, CompoundLiteral, .compound_literal = { .named_parameters = $2, .init = $4 } ); }
+	| '<' STATIC type '>' compound_literal_initializer
+	    { $$ = DUP_T(Expr, CompoundLiteral, .compound_literal = { .type = $3, .init = $5, .is_static = true } ); }
+	| '<' STATIC parameter_mandatory_name_type_list '>' compound_literal_initializer
+	    { $$ = DUP_T(Expr, CompoundLiteral, .compound_literal = { .named_parameters = $3, .init = $5, .is_static = true } ); }
 	;
 
 arithmetic_expression

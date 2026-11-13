@@ -123,7 +123,9 @@ struct Expr {
 
         struct {
             struct Type *type;
+            struct TypeParamList *named_parameters;
             struct Initializer *init;
+            bool is_static;
         } compound_literal;
 
         char *string;
