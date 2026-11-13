@@ -153,6 +153,7 @@
 %left LEFT_OP RIGHT_OP
 %left '+' '-'
 %left '*' '/' '%'
+%left AS
 %right '&' '^' '!' '~' NOT
 
 %token CASE DEFAULT IF ELSE SWITCH WHILE DO FOR GOTO LOOP CONTINUE BREAK FALL RETURN
@@ -239,6 +240,8 @@ cast_expression
 	    { $$ = $1; }
 	| '<' type '>' cast_expression
 	    { $$ = DUP_T(Expr, Cast, .cast = { .type = $2, .e = $4 }); }
+	| cast_expression AS type
+	    { $$ = DUP_T(Expr, Cast, .cast = { .type = $3, .e = $1 }); }
 	| '<' type '>' compound_literal_initializer
 	    { $$ = DUP_T(Expr, CompoundLiteral, .compound_literal = { .type = $2, .init = $4 } ); }
 	| '<' parameter_mandatory_name_type_list '>' compound_literal_initializer

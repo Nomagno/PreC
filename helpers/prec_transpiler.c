@@ -1593,15 +1593,21 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
         return_type = x->cast.type;
         break;
     case CompoundLiteral:
-        p("(");
+        if (x->compound_literal.type != NULL) {
+            p("(");
 
-        p("(");
-            p("%s", t_str_type(x->compound_literal.type, NULL, false));
-        p(")");
-        t_initializer(x->compound_literal.init, x->compound_literal.type);
+            p("(");
+                p("%s", t_str_type(x->compound_literal.type, NULL, false));
+            p(")");
+            t_initializer(x->compound_literal.init, x->compound_literal.type);
 
-        p(")");
-        return_type = x->compound_literal.type;
+            p(")");
+            return_type = x->compound_literal.type;
+        } else {
+            fprintf(stderr, "%s:%d:%d: Compiler error: TODO: compount literal type inference <>{expr}\n",
+                    FILENAME_GRACEFUL, x->source_line, 1);
+            exit(1);
+        }
         break;
     case StructAccess:
     case StructDeref: {
