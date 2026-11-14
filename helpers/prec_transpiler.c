@@ -270,8 +270,8 @@ void tabs_custom(FILE *stream) {
 // this is used ONLY for constdata, the rest of the type inference is done by the C compiler.
 // Constdata is a PreC typesystem level feature, so we WILL be able to infer a specific struct/union/enum
 // type if and only if we have the type in the type table
-struct Type *t_expr(struct Expr *x, bool inline_when_possible);
-#define t_expr(_x, ...) t_expr(_x, __VA_ALT__(false, __VA_ARGS__))
+struct Type *t_expr(struct Expr *x, struct Type *expected_type, bool inline_when_possible);
+#define t_expr(_x, _t, ...) t_expr(_x, _t, __VA_ALT__(false, __VA_ARGS__))
 
 bool isBaseType(enum TypeSort x) {
     return x == TypeofExpr
@@ -403,7 +403,7 @@ void dispatch_array(struct TypeBuffer *type_buffer, struct Expr *expression) {
         struct BufferList *saved_buffer = current_buffer;
         current_buffer = &(struct BufferList){ .stream = stream };
 
-        t_expr(expression, true /*inline_when_possible*/);
+        t_expr(expression, DUP((struct Type) { .tag = u32 }), true /*inline_when_possible*/);
 
         current_buffer = saved_buffer;
         fclose(stream);
@@ -928,7 +928,7 @@ void t_internal_type(struct Type *x, struct TypeBuffer *type_buffer) {
 
         current_buffer = &(struct BufferList){ .stream = type_buffer->stream };
 
-        t_expr(x->typeof_expr);
+        t_expr(x->typeof_expr, NULL);
 
         current_buffer = saved_buffer;
 
@@ -1177,7 +1177,7 @@ bool statement_contains_loop(struct Statement *stat) {
 void t_initializer(struct Initializer *x, struct Type *t) {
     switch (x->tag) {
     case Expr:
-        t_expr(x->expr, true /*inline_when_possible*/);
+        t_expr(x->expr, t, true /*inline_when_possible*/);
         break;
     case Data:
         p("{");
@@ -1196,7 +1196,7 @@ void t_initializer(struct Initializer *x, struct Type *t) {
                         break;
                     case DesignatorIndex:
                         p("[");
-                        t_expr(desig_node->desig->index->expr, true /*inline_when_possible*/);
+                        t_expr(desig_node->desig->index->expr, DUP((struct Type) {.tag = u32}), true /*inline_when_possible*/);
                         p("]");
                         break;
                     }
@@ -1351,15 +1351,17 @@ void t_initializer(struct Initializer *x, struct Type *t) {
             NEW_REFERENCE(
                 NEW_IDENTIFIER(unique_temporary_identifier, x->source_line),
                 x->source_line
-            )
+            ),
+            NULL
         );
         break;
     }
 }
 
 #undef t_expr
-#define t_expr(_x, ...) t_expr(_x, __VA_ALT__(inline_when_possible, __VA_ARGS__))
-struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
+#define t_expr(_x, _t, ...) t_expr(_x,_t, __VA_ALT__(inline_when_possible, __VA_ARGS__))
+// The expected type is used for type inference, on a best-effort basis
+struct Type *t_expr(struct Expr *x, struct Type *expected_type, bool inline_when_possible) {
     struct Type *t;
     struct Type *return_type = NULL;
     switch (x->tag) {
@@ -1373,12 +1375,18 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
         switch(x->unOp.tag) {
         case Sizeof:
             p("sizeof(");
-            t_expr(x->unOp.e);
+            t_expr(x->unOp.e, NULL);
             p(")");
             break;
         case Ref:
+            if (expected_type) {
+                DISCARD_QUALIFIERS(expected_type);
+                expected_type = DUP((struct Type){.tag = Reference, .reference = expected_type});
+            }
+
             p("&");
-            t = t_expr(x->unOp.e, false /*inline_when_possible*/);
+
+            t = t_expr(x->unOp.e, expected_type, false /*inline_when_possible*/);
             
             return_type = DUP_T(Type, Reference,
                 .reference = t,
@@ -1386,8 +1394,14 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
             );
             break;
         case Deref:
+            DISCARD_QUALIFIERS(expected_type);
+            if (expected_type && expected_type->tag == Reference) {
+                expected_type = expected_type->reference;
+            }
+
             p("*");
-            t = t_expr(x->unOp.e);
+
+            t = t_expr(x->unOp.e, expected_type);
             DISCARD_QUALIFIERS(t);
             if (t && t->tag == FunPointer) {
                 return_type = t;
@@ -1396,13 +1410,13 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
             }
             break;
         case Neg:
-            p("-");      t_expr(x->unOp.e);
+            p("-");      t_expr(x->unOp.e, NULL);
             break;
         case Not:
-            p("~");      t_expr(x->unOp.e);
+            p("~");      t_expr(x->unOp.e, NULL);
             break;
         case BoolNot:
-            p("!");      t_expr(x->unOp.e);
+            p("!");      t_expr(x->unOp.e, NULL);
             break;
         }
         p(")");
@@ -1411,18 +1425,18 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
         p("(");
         switch(x->binOp.tag) {
         case Mul:
-            t_expr(x->binOp.e1); p("*"); t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1, NULL); p("*"); t_expr(x->binOp.e2, NULL);
             break;
         case Div:
-            t_expr(x->binOp.e1); p("/"); t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1, NULL); p("/"); t_expr(x->binOp.e2, NULL);
             break;
         case Mod:
-            t_expr(x->binOp.e1); p("%c", '%'); t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1, NULL); p("%c", '%'); t_expr(x->binOp.e2, NULL);
             break;
         case Add:
-            struct Type *t1 = t_expr(x->binOp.e1);
+            struct Type *t1 = t_expr(x->binOp.e1, NULL);
             p("+");
-            struct Type *t2 = t_expr(x->binOp.e2);
+            struct Type *t2 = t_expr(x->binOp.e2, NULL);
 
             // really approximate pointer arithmetic inference
             DISCARD_QUALIFIERS(t1);
@@ -1436,9 +1450,9 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
 
             break;
         case Sub:
-            t1 = t_expr(x->binOp.e1);
+            t1 = t_expr(x->binOp.e1, NULL);
             p("-");
-            t2 = t_expr(x->binOp.e2);
+            t2 = t_expr(x->binOp.e2, NULL);
 
             // really approximate pointer arithmetic inference
             DISCARD_QUALIFIERS(t1);
@@ -1451,70 +1465,88 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
                 return_type = t2;
             break;
         case And:
-            t_expr(x->binOp.e1); p("&"); t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1, NULL); p("&"); t_expr(x->binOp.e2, NULL);
             break;
         case BoolAnd:
-            t_expr(x->binOp.e1); p("&&"); t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1, NULL); p("&&"); t_expr(x->binOp.e2, NULL);
             break;
         case Or:
-            t_expr(x->binOp.e1); p("|"); t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1, NULL); p("|"); t_expr(x->binOp.e2, NULL);
             break;
         case BoolOr:
-            t_expr(x->binOp.e1); p("||"); t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1, NULL); p("||"); t_expr(x->binOp.e2, NULL);
             break;
         case Xor:
-            t_expr(x->binOp.e1); p("^"); t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1, NULL); p("^"); t_expr(x->binOp.e2, NULL);
             break;
         case LeftShift:
-            t_expr(x->binOp.e1); p("<<"); t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1, NULL); p("<<"); t_expr(x->binOp.e2, NULL);
             break;
         case RightShift:
-            t_expr(x->binOp.e1); p(">>"); t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1, NULL); p(">>"); t_expr(x->binOp.e2, NULL);
             break;
         case Less:
-            t_expr(x->binOp.e1); p("<"); t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1, NULL); p("<"); t_expr(x->binOp.e2, NULL);
             break;
         case More:
-            t_expr(x->binOp.e1); p(">"); t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1, NULL); p(">"); t_expr(x->binOp.e2, NULL);
             break;
-        case Equal:
-            t_expr(x->binOp.e1); p("=="); t_expr(x->binOp.e2);
+        case Equal: {
+            bool saved_dr = dry_run;
+            dry_run = true;
+            struct Type *lhs_type = t_expr(x->binOp.e1, NULL);
+            dry_run = saved_dr;
+
+            saved_dr = dry_run;
+            dry_run = true;
+            struct Type *rhs_type = t_expr(x->binOp.e2, NULL);
+            dry_run = saved_dr;
+
+            if (lhs_type != NULL && rhs_type == NULL) {
+                t_expr(x->binOp.e1, lhs_type); p("=="); t_expr(x->binOp.e2, lhs_type);
+            } else if (lhs_type == NULL && rhs_type != NULL) {
+                t_expr(x->binOp.e1, rhs_type); p("=="); t_expr(x->binOp.e2, rhs_type);
+            } else {
+                t_expr(x->binOp.e1, lhs_type); p("=="); t_expr(x->binOp.e2, rhs_type);
+            }
+            
             break;
+        }
         case MoreEqual:
-            t_expr(x->binOp.e1); p(">="); t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1, NULL); p(">="); t_expr(x->binOp.e2, NULL);
             break;
         case LessEqual:
-            t_expr(x->binOp.e1); p("<="); t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1, NULL); p("<="); t_expr(x->binOp.e2, NULL);
             break;
         case NotEqual:
-            t_expr(x->binOp.e1); p("!="); t_expr(x->binOp.e2);
+            t_expr(x->binOp.e1, NULL); p("!="); t_expr(x->binOp.e2, NULL);
             break;
         case Assign:
             bool saved_dr = dry_run;
             dry_run = true;
-            struct Type *lhs_type = t_expr(x->binOp.e1);
+            struct Type *lhs_type = t_expr(x->binOp.e1, NULL);
             dry_run = saved_dr;
 
             bool is_void = lhs_type && (lhs_type->tag == Void || (lhs_type->tag == Qualifier && lhs_type->qualifier.t->tag == Void));
             // Assigning to void vars is a no-op.
             if (!is_void) {
-                t_expr(x->binOp.e1);
+                t_expr(x->binOp.e1, lhs_type);
                 p("=");
             }
-            return_type = t_expr(x->binOp.e2);
+            return_type = t_expr(x->binOp.e2, lhs_type);
             break;
         case AssignAdd:
-            t_expr(x->binOp.e1);
+            t_expr(x->binOp.e1, NULL);
             p("+=");
-            return_type = t_expr(x->binOp.e2);
+            return_type = t_expr(x->binOp.e2, NULL);
             break;
         case Sequence:
-            t_expr(x->binOp.e1);
+            t_expr(x->binOp.e1, NULL);
             p(",");
-            return_type = t_expr(x->binOp.e2);
+            return_type = t_expr(x->binOp.e2, expected_type);
             break;
         case Index:
-            t = t_expr(x->binOp.e1);
+            t = t_expr(x->binOp.e1, NULL);
             DISCARD_QUALIFIERS(t);
             if (t && t->tag == Array) {
                 return_type = t->array.t;
@@ -1522,14 +1554,14 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
                 return_type = t->reference;
             }
             p("[");
-                t_expr(x->binOp.e2);
+                t_expr(x->binOp.e2, NULL);
             p("]");
             break;
         }
         p(")");
         break;
     case FunctionCall:
-        t = t_expr(x->function_call.callee);
+        t = t_expr(x->function_call.callee, DUP((struct Type) { .tag = FunPointer, .fun_pointer = { .return_type = expected_type, .param_list = NULL }}));
         DISCARD_QUALIFIERS(t);
         if (t && t->tag == FunPointer) {
             return_type = t->fun_pointer.return_type;
@@ -1546,7 +1578,8 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
         REWIND_LIST(curr);
 
         while (curr != NULL) {
-            t_expr(curr->expr);
+            // TODO: infer type based on type t
+            t_expr(curr->expr, NULL);
             if (curr->next != NULL)
                 p(",");
             curr = curr->next;
@@ -1579,35 +1612,45 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
         p("%luU", x->uint_num);
         break;
     case Ternary:
-        t_expr(x->ternary.cond);
+        t_expr(x->ternary.cond, NULL);
         p("?");
-        t_expr(x->ternary.if_true);
+        t_expr(x->ternary.if_true, expected_type);
         p(":");
-        t_expr(x->ternary.if_false);
+        t_expr(x->ternary.if_false, expected_type);
         break;
     case Cast:
         p("(");
         p("("); p("%s", t_str_type(x->cast.type, NULL, false)); p(")");
-        t_expr(x->cast.e);
+        t_expr(x->cast.e, NULL);
         p(")");
         return_type = x->cast.type;
         break;
     case CompoundLiteral:
-        if (x->compound_literal.type != NULL) {
-            p("(");
+        p("(");
 
-            p("(");
-                p("%s", t_str_type(x->compound_literal.type, NULL, false));
-            p(")");
-            t_initializer(x->compound_literal.init, x->compound_literal.type);
+        p("(");
+        if (x->compound_literal.is_static
+            && x->compound_literal.init
+            && x->compound_literal.init->tag == Data)
+                p("static ");
 
-            p(")");
-            return_type = x->compound_literal.type;
+        if (x->compound_literal.type == NULL && !dry_run) {
+                if (expected_type == NULL) {
+                    fprintf(stderr, "%s:%d:%d: Compiler error: Failed to infer compound literal type\n",
+                            FILENAME_GRACEFUL, x->source_line, 1);
+                    exit(1);
+                }
+                p("%s", t_str_type(expected_type, NULL, false));
         } else {
-            fprintf(stderr, "%s:%d:%d: Compiler error: TODO: compount literal type inference <>{expr}\n",
-                    FILENAME_GRACEFUL, x->source_line, 1);
-            exit(1);
+            p("%s", t_str_type(x->compound_literal.type, NULL, false));
         }
+        p(")");
+
+        t_initializer(x->compound_literal.init, (x->compound_literal.type == NULL) ? expected_type : x->compound_literal.type);
+
+        p(")");
+
+        return_type = x->compound_literal.type;
         break;
     case StructAccess:
     case StructDeref: {
@@ -1617,7 +1660,7 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
         // and not as a global variable, but it'll do for all cases of the programmer being non-evil for now
         bool saved_dr = dry_run;
         dry_run = true;
-        t = t_expr(x->struct_access_deref.e);
+        t = t_expr(x->struct_access_deref.e, NULL);
         DISCARD_QUALIFIERS(t);
 
         bool is_pointer = false;
@@ -1731,7 +1774,7 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
 
         if (is_constdata_access && constdata_inlined) {
             p("(");
-            t_expr(constdata_inlined_value);
+            t_expr(constdata_inlined_value, return_type);
             p(")");
         } else if (is_constdata_access && !constdata_inlined) {
             if (!constdata_inlined) {
@@ -1739,7 +1782,7 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
                     type_name, x->struct_access_deref.member);
             }
         } else {
-            t = t_expr(x->struct_access_deref.e);
+            t = t_expr(x->struct_access_deref.e, NULL);
 
             if (is_pointer && !is_constdata_access) {
                 p("->");
@@ -1792,7 +1835,7 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
     case StructMethod: {
         bool saved_dr = dry_run;
         dry_run = true;
-        t = t_expr(x->struct_access_deref.e);
+        t = t_expr(x->struct_access_deref.e, NULL);
 
         struct Type *original_type = t;
 
@@ -1862,7 +1905,7 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
 
         dry_run = saved_dr;
         if (!is_constdata_access) {
-            t = t_expr(x->struct_access_deref.e);
+            t = t_expr(x->struct_access_deref.e, NULL);
 
             if (is_pointer) {
                 p("->");
@@ -1924,16 +1967,16 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
                 if (original_type != NULL) {
                     // Wrapper struct to be able to take reference to an rvalue
                     p("&(struct { %s; }){", t_str_type(original_type, "x", false ));
-                    t_expr(e);
+                    t_expr(e, original_type);
                     p("}.x");
                 } else {
                     p("&(");
-                    t_expr(e);
+                    t_expr(e, original_type);
                     p(")");
                 }
             } else {
                 p("&(");
-                t_expr(e);
+                t_expr(e, original_type);
                 p(")");
             }
         } else {
@@ -1949,7 +1992,7 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
                     exponential_method_evaluation += 1;
                 }
             }
-            t_expr(e);
+            t_expr(e, original_type);
         }
         if (!dry_run && exponential_method_evaluation > 0) {
             exponential_method_evaluation -= 1;
@@ -1960,7 +2003,8 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
 
             REWIND_LIST(curr);
             while (curr != NULL) {
-                t_expr(curr->expr);
+                // TODO: infer type based on type original_type
+                t_expr(curr->expr, NULL);
                 if (curr->next != NULL)
                     p(",");
                 curr = curr->next;
@@ -1975,7 +2019,7 @@ struct Type *t_expr(struct Expr *x, bool inline_when_possible) {
     return return_type;
 }
 #undef t_expr
-#define t_expr(_x, ...) t_expr(_x, __VA_ALT__(false, __VA_ARGS__))
+#define t_expr(_x, _t, ...) t_expr(_x, _t, __VA_ALT__(false, __VA_ARGS__))
 
 bool is_const_expr(struct Expr *x) {
     if (x == NULL)
@@ -2386,7 +2430,7 @@ void t_typedefinition(struct TypeDefinition *tdef, bool top_level) {
                 p("%s", node->val->name);
                 if (node->val->val != NULL) {
                     p("=");
-                    t_expr(node->val->val->expr, true /*inline_when_possible*/);
+                    t_expr(node->val->val->expr, NULL, true /*inline_when_possible*/);
                 }
                 if (node->next != NULL)
                     p(",");
@@ -2596,7 +2640,7 @@ void t_statement(struct Statement *stat) {
     case Expr:
         tabs();
         if (stat->e != NULL)
-            t_expr(stat->e);
+            t_expr(stat->e, NULL);
         p(";"); NEWLINE();
         break;
     case Selection:
@@ -2614,7 +2658,7 @@ void t_statement(struct Statement *stat) {
             tabs();
             p("if (")
             if (stat->s->simple_if.clause != NULL) {
-                t_expr(stat->s->simple_if.clause);
+                t_expr(stat->s->simple_if.clause, NULL);
             } else if (stat->s->simple_if.decl != NULL) {
                 // If there's several variables in the declaration, this will always take the last
                 // as the clause
@@ -2648,7 +2692,7 @@ void t_statement(struct Statement *stat) {
         case IfExtract: {
             bool saved_dr = dry_run;
             dry_run = true;
-            struct Type *type_to_extract = t_expr(stat->s->simple_if_extract.from);
+            struct Type *type_to_extract = t_expr(stat->s->simple_if_extract.from, NULL);
             dry_run = saved_dr;
 
             DISCARD_QUALIFIERS(type_to_extract);
@@ -2679,7 +2723,7 @@ void t_statement(struct Statement *stat) {
                                        can NOT access tagged union fields other than 'tag' directly*/
                                        concat("_prec_privileged_", stat->s->simple_if_extract.tag),
                                        stat->s->simple_if_extract.action->source_line);
-            struct Type *type_of_extraction = t_expr(e);
+            struct Type *type_of_extraction = t_expr(e, NULL);
             dry_run = saved_dr;
 
             // The difference in typing is simply down to convenience
@@ -2704,13 +2748,13 @@ void t_statement(struct Statement *stat) {
             tabs();
             if (is_pointer) {
                 p("if (");
-                    t_expr(stat->s->simple_if_extract.from);
+                    t_expr(stat->s->simple_if_extract.from, NULL);
                 p("->tag == %s_%s) {",
                     type_to_extract->user_defined_type.tag_name,
                     stat->s->simple_if_extract.tag);
             } else {
                 p("if ((");
-                    t_expr(stat->s->simple_if_extract.from);
+                    t_expr(stat->s->simple_if_extract.from, NULL);
                 p(").tag == %s_%s) {",
                     type_to_extract->user_defined_type.tag_name,
                     stat->s->simple_if_extract.tag);
@@ -2725,11 +2769,11 @@ void t_statement(struct Statement *stat) {
             tabs();
             if (is_pointer) {
                 p("%s = &(", t_str_type(type_of_extraction, stat->s->simple_if_extract.to, false));
-                    t_expr(stat->s->simple_if_extract.from);
+                    t_expr(stat->s->simple_if_extract.from, NULL);
                 p(")->union_data.%s;", stat->s->simple_if_extract.tag);
             } else {
                 p("%s = &(", t_str_type(type_of_extraction, stat->s->simple_if_extract.to, false));
-                    t_expr(stat->s->simple_if_extract.from);
+                    t_expr(stat->s->simple_if_extract.from, NULL);
                 p(").union_data.%s;", stat->s->simple_if_extract.tag);
             }
             NEWLINE();
@@ -2765,7 +2809,7 @@ void t_statement(struct Statement *stat) {
             tabs();
             p("if (")
             if (stat->s->if_else.clause != NULL) {
-                t_expr(stat->s->if_else.clause);
+                t_expr(stat->s->if_else.clause, NULL);
             } else if (stat->s->if_else.decl != NULL) {
                 // If there's several variables in the declaration, this will always take the last
                 // as the clause
@@ -2818,7 +2862,7 @@ void t_statement(struct Statement *stat) {
         case IfElseExtract:
             bool saved_dr = dry_run;
             dry_run = true;
-            struct Type *type_to_extract = t_expr(stat->s->if_else_extract.from);
+            struct Type *type_to_extract = t_expr(stat->s->if_else_extract.from, NULL);
             dry_run = saved_dr;
 
             DISCARD_QUALIFIERS(type_to_extract);
@@ -2849,7 +2893,7 @@ void t_statement(struct Statement *stat) {
                                        can NOT access tagged union fields other than 'tag' directly*/
                                        concat("_prec_privileged_", stat->s->if_else_extract.tag),
                                        stat->s->if_else_extract.action_true->source_line);
-            struct Type *type_of_extraction = t_expr(e);
+            struct Type *type_of_extraction = t_expr(e, NULL);
             dry_run = saved_dr;
 
             // The difference in typing is simply down to convenience
@@ -2875,13 +2919,13 @@ void t_statement(struct Statement *stat) {
 
             if (is_pointer) {
                 p("if (");
-                    t_expr(stat->s->if_else_extract.from);
+                    t_expr(stat->s->if_else_extract.from, NULL);
                 p("->tag == %s_%s) {",
                     type_to_extract->user_defined_type.tag_name,
                     stat->s->if_else_extract.tag);
             } else {
                 p("if ((");
-                    t_expr(stat->s->if_else_extract.from);
+                    t_expr(stat->s->if_else_extract.from, NULL);
                 p(").tag == %s_%s) {",
                     type_to_extract->user_defined_type.tag_name,
                     stat->s->if_else_extract.tag);
@@ -2896,11 +2940,11 @@ void t_statement(struct Statement *stat) {
             tabs();
             if (is_pointer) {
                 p("%s = &(", t_str_type(type_of_extraction, stat->s->if_else_extract.to, false));
-                    t_expr(stat->s->if_else_extract.from);
+                    t_expr(stat->s->if_else_extract.from, NULL);
                 p(")->union_data.%s;", stat->s->if_else_extract.tag);
             } else {
                 p("%s = &(", t_str_type(type_of_extraction, stat->s->if_else_extract.to, false));
-                    t_expr(stat->s->if_else_extract.from);
+                    t_expr(stat->s->if_else_extract.from, NULL);
                 p(").union_data.%s;", stat->s->if_else_extract.tag);
             }
             NEWLINE();
@@ -2950,7 +2994,7 @@ void t_statement(struct Statement *stat) {
             tabs();
             p("switch (")
             if (stat->s->switch_stat.clause != NULL) {
-                t_expr(stat->s->switch_stat.clause);
+                t_expr(stat->s->switch_stat.clause, NULL);
             } else if (stat->s->switch_stat.decl != NULL) {
                 // If there's several variables in the declaration, this will always take the last
                 // as the clause
@@ -2994,7 +3038,9 @@ void t_statement(struct Statement *stat) {
                     if (signature_params->param->name != NULL) {
                         tabs();
                         p("%s = ", signature_params->param->name);
-                        t_expr(loop_params->expr);
+                        // TODO: infer type based on type current_funtype
+                        // but it's probably not needed tbh
+                        t_expr(loop_params->expr, NULL);
                         p(";");
                         NEWLINE();
                     }
@@ -3015,7 +3061,7 @@ void t_statement(struct Statement *stat) {
 
             if (stat->j->return_stat.expr != NULL) {
                 dry_run = true;
-                t = t_expr(stat->j->return_stat.expr);
+                t = t_expr(stat->j->return_stat.expr, current_funtype->fun_pointer.return_type);
                 DISCARD_QUALIFIERS(t);
                 dry_run = saved_dr;
             }
@@ -3042,7 +3088,7 @@ void t_statement(struct Statement *stat) {
                 NEWLINE();
             } else if (t != NULL && t->tag == Void) {
                 tabs();
-                t_expr(stat->j->return_stat.expr);
+                t_expr(stat->j->return_stat.expr, NULL);
                 p(";");
 
                 p("return;");
@@ -3054,7 +3100,7 @@ void t_statement(struct Statement *stat) {
 
                 if (stat->j->return_stat.expr != NULL) {
                     p(" ");
-                    t_expr(stat->j->return_stat.expr);
+                    t_expr(stat->j->return_stat.expr, current_funtype->fun_pointer.return_type);
                 }
                 p(";");
                 NEWLINE();
@@ -3120,7 +3166,7 @@ void t_statement(struct Statement *stat) {
                                         access tagged union fields other than 'tag' directly*/
                                        concat("_prec_privileged_", stat->l->case_extract.tag),
                                        stat->source_line);
-            struct Type *type_of_extraction = t_expr(e);
+            struct Type *type_of_extraction = t_expr(e, NULL);
             dry_run = saved_dr;
 
             // The difference in typing is simply down to convenience
@@ -3188,7 +3234,7 @@ void t_statement(struct Statement *stat) {
 
             tabs();
             p("case ");
-            t_expr(stat->l->case_expr->expr, true /*inline_when_possible*/);
+            t_expr(stat->l->case_expr->expr, NULL, true /*inline_when_possible*/);
             p(":");
             NEWLINE();
 
@@ -3206,7 +3252,7 @@ void t_statement(struct Statement *stat) {
 
             tabs();
             p("case ");
-            t_expr(stat->l->case_expr->expr, true /*inline_when_possible*/);
+            t_expr(stat->l->case_expr->expr, NULL, true /*inline_when_possible*/);
             p(":");
             NEWLINE();
 
@@ -3237,7 +3283,7 @@ void t_statement(struct Statement *stat) {
             ENTER_SCOPE(stat->source_line);
             tabs();
             p("while (");
-            t_expr(stat->i->while_dowhile_stat.expr);
+            t_expr(stat->i->while_dowhile_stat.expr, NULL);
             p(")");
             NEWLINE();
             if (stat->i->while_dowhile_stat.stat->tag == Block) {
@@ -3264,7 +3310,7 @@ void t_statement(struct Statement *stat) {
             }
             tabs();
             p("while (");
-            t_expr(stat->i->while_dowhile_stat.expr);
+            t_expr(stat->i->while_dowhile_stat.expr, NULL);
             p(");");
             NEWLINE();
 
@@ -3287,11 +3333,11 @@ void t_statement(struct Statement *stat) {
             t_declaration(stat->i->for_stat_decl.init, true /*freeform: no newlines and no indents*/, false /*top_level*/);
 
             if (stat->i->for_stat_decl.clause != NULL)
-                t_expr(stat->i->for_stat_decl.clause);
+                t_expr(stat->i->for_stat_decl.clause, NULL);
             p("; ");
 
             if (stat->i->for_stat_decl.update != NULL)
-                t_expr(stat->i->for_stat_decl.update);
+                t_expr(stat->i->for_stat_decl.update, NULL);
 
             p(")");
 
@@ -3309,12 +3355,12 @@ void t_statement(struct Statement *stat) {
             ENTER_SCOPE(stat->source_line);
             tabs();
             p("for (");
-            t_expr(stat->i->for_stat_expr.init);
+            t_expr(stat->i->for_stat_expr.init, NULL);
             p("; ");
-            t_expr(stat->i->for_stat_expr.clause);
+            t_expr(stat->i->for_stat_expr.clause, NULL);
             p("; ");
             if (stat->i->for_stat_expr.update != NULL)
-                t_expr(stat->i->for_stat_expr.update);
+                t_expr(stat->i->for_stat_expr.update, NULL);
 
             p(")");
 
