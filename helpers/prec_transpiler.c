@@ -1177,9 +1177,16 @@ bool statement_contains_loop(struct Statement *stat) {
 void t_initializer(struct Initializer *x, struct Type *t) {
     switch (x->tag) {
     case Expr:
-        t_expr(x->expr, t, true /*inline_when_possible*/);
-        break;
     case Data:
+        if (x->tag == Expr && x->expr->tag == CompoundLiteral && x->expr->compound_literal.type == NULL) {
+            // Requesting type inference, which is not needed for initializers, so just fall through to data
+            x = x->expr->compound_literal.init;
+        } else if (x->tag == Expr) {
+            t_expr(x->expr, t, true /*inline_when_possible*/);
+            break;
+        }
+
+
         p("{");
         // translate initializer list
         struct InitializerList *node = x->data;
