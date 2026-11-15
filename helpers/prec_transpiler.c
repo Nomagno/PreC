@@ -1878,7 +1878,9 @@ struct Type *t_expr(struct Expr *x, struct Type *expected_type, bool inline_when
                 TypeTablePtr entry = fetch_type(type_table, type_name);
 
                 if (entry != NULL) {
-                    struct DeclarationList *decls = entry->regulardata;
+                    struct DeclarationList *decls = NULL;
+                    if (entry)
+                        decls = entry->regulardata;
 
                     bool found_var = false;
 
@@ -2002,7 +2004,9 @@ struct Type *t_expr(struct Expr *x, struct Type *expected_type, bool inline_when
                 // using the type table too
 
                 TypeTablePtr entry = fetch_type(type_table, type_name);
-                struct DeclarationList *decls = entry->regulardata;
+                struct DeclarationList *decls = NULL;
+                if (entry)
+                    decls = entry->regulardata;
 
                 bool found_var = false;
 
