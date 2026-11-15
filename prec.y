@@ -207,6 +207,14 @@ postfix_expression
 	    { $$ = DUP_T(Expr, StructDerefMethod, .struct_access_deref = { .e = $1, .member = $3, .method_args = NULL}); }
 	| postfix_expression PTR_METHOD_OP IDENTIFIER '(' argument_expression_list ')'
 	    { $$ = DUP_T(Expr, StructDerefMethod, .struct_access_deref = { .e = $1, .member = $3, .method_args = $5}); }
+	| '<' type '>' compound_literal_initializer
+	    { $$ = DUP_T(Expr, CompoundLiteral, .compound_literal = { .type = $2, .init = $4 } ); }
+	| '<' parameter_mandatory_name_type_list '>' compound_literal_initializer
+	    { $$ = DUP_T(Expr, CompoundLiteral, .compound_literal = { .named_parameters = $2, .init = $4 } ); }
+	| '<' STATIC type '>' compound_literal_initializer
+	    { $$ = DUP_T(Expr, CompoundLiteral, .compound_literal = { .type = $3, .init = $5, .is_static = true } ); }
+	| '<' STATIC parameter_mandatory_name_type_list '>' compound_literal_initializer
+	    { $$ = DUP_T(Expr, CompoundLiteral, .compound_literal = { .named_parameters = $3, .init = $5, .is_static = true } ); }
 	;
 
 argument_expression_list
@@ -242,14 +250,6 @@ cast_expression
 	    { $$ = DUP_T(Expr, Cast, .cast = { .type = $2, .e = $4 }); }
 	| cast_expression AS type
 	    { $$ = DUP_T(Expr, Cast, .cast = { .type = $3, .e = $1 }); }
-	| '<' type '>' compound_literal_initializer
-	    { $$ = DUP_T(Expr, CompoundLiteral, .compound_literal = { .type = $2, .init = $4 } ); }
-	| '<' parameter_mandatory_name_type_list '>' compound_literal_initializer
-	    { $$ = DUP_T(Expr, CompoundLiteral, .compound_literal = { .named_parameters = $2, .init = $4 } ); }
-	| '<' STATIC type '>' compound_literal_initializer
-	    { $$ = DUP_T(Expr, CompoundLiteral, .compound_literal = { .type = $3, .init = $5, .is_static = true } ); }
-	| '<' STATIC parameter_mandatory_name_type_list '>' compound_literal_initializer
-	    { $$ = DUP_T(Expr, CompoundLiteral, .compound_literal = { .named_parameters = $3, .init = $5, .is_static = true } ); }
 	;
 
 arithmetic_expression
