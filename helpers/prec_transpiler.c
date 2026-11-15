@@ -1174,14 +1174,25 @@ bool statement_contains_loop(struct Statement *stat) {
 // u32 a = {(u32){0}}; -> t_initializer({t_initializer()}, NULL);
 // This is needed to translate function literals, as ${...} by itself can not be compiled
 // without a **direct** inferrence type provided, and will result in a compilation error.
-void t_initializer(struct Initializer *x, struct Type *t) {
-    switch (x->tag) {
+// the named parameters override the names of the type, IF the type is a function pointer type
+void t_initializer(struct Initializer *x, struct Type *t, struct TypeParamList *named_parameters) {
+    enum InitializerSort tag = x->tag;
+    
+FunStart:
+    switch (tag) {
     case Expr:
     case Data:
-        if (x->tag == Expr && x->expr->tag == CompoundLiteral && x->expr->compound_literal.type == NULL) {
+        if (tag == Expr && x->expr->tag == CompoundLiteral && x->expr->compound_literal.type == NULL) {
             // Requesting type inference, which is not needed for initializers, so just fall through to data
             x = x->expr->compound_literal.init;
-        } else if (x->tag == Expr) {
+        } else if (tag == Expr) {
+            if (x->expr->tag == CompoundLiteral && x->expr->compound_literal.named_parameters != NULL
+               && x->expr->compound_literal.init->tag == Code) {
+                named_parameters = x->expr->compound_literal.named_parameters;
+                tag = Code;
+                goto FunStart;
+                break;
+            }
             t_expr(x->expr, t, true /*inline_when_possible*/);
             break;
         }
@@ -1211,7 +1222,7 @@ void t_initializer(struct Initializer *x, struct Type *t) {
                 }
                 p("=");
             }
-            t_initializer(node->current, NULL);
+            t_initializer(node->current, NULL, NULL);
             node = node->next;
             if (node != NULL)
                 p(", ");
@@ -1221,6 +1232,7 @@ void t_initializer(struct Initializer *x, struct Type *t) {
 
         break;
     case Code:
+        // TODO: make use of the named_parameters parameter to override names <a,b>${return a + b;}
         if (t == NULL) {
             fprintf(stderr, "%s:%d:%d: Compiler error: Function initializer without explicit type\n",
                     FILENAME_GRACEFUL, x->source_line, 1);
@@ -1236,7 +1248,7 @@ void t_initializer(struct Initializer *x, struct Type *t) {
 
         if (dry_run)
             return;
-
+        
         // As explanied above, we create a new buffer to print to,
         // print the code to it, then restore the current buffer.
         SAVE_BUFFER();
@@ -1365,6 +1377,27 @@ void t_initializer(struct Initializer *x, struct Type *t) {
     }
 }
 
+struct Type *infer_type_funcall(struct Type *t, unsigned position) {
+    if (t == NULL)
+        return NULL;
+    if (t->tag != FunPointer)
+        return NULL;
+
+    struct TypeParamList *curr = t->fun_pointer.param_list;
+    REWIND_LIST(curr);
+    unsigned i = 0;
+    while (curr != NULL) {
+        // ellipsis ..., not inferrable by definition as we're into variadics territory
+        if (curr->param == NULL)
+            return NULL;
+        if (i == position)
+            return curr->param->type;
+        curr = curr->next;
+        i += 1;
+    }
+    return NULL;
+}
+
 #undef t_expr
 #define t_expr(_x, _t, ...) t_expr(_x,_t, __VA_ALT__(inline_when_possible, __VA_ARGS__))
 // The expected type is used for type inference, on a best-effort basis
@@ -1386,9 +1419,9 @@ struct Type *t_expr(struct Expr *x, struct Type *expected_type, bool inline_when
             p(")");
             break;
         case Ref:
-            if (expected_type) {
-                DISCARD_QUALIFIERS(expected_type);
-                expected_type = DUP((struct Type){.tag = Reference, .reference = expected_type});
+            DISCARD_QUALIFIERS(expected_type);
+            if (expected_type && expected_type->tag == Reference) {
+                expected_type = expected_type->reference;
             }
 
             p("&");
@@ -1401,9 +1434,9 @@ struct Type *t_expr(struct Expr *x, struct Type *expected_type, bool inline_when
             );
             break;
         case Deref:
-            DISCARD_QUALIFIERS(expected_type);
-            if (expected_type && expected_type->tag == Reference) {
-                expected_type = expected_type->reference;
+            if (expected_type) {
+                DISCARD_QUALIFIERS(expected_type);
+                expected_type = DUP((struct Type){.tag = Reference, .reference = expected_type});
             }
 
             p("*");
@@ -1584,12 +1617,20 @@ struct Type *t_expr(struct Expr *x, struct Type *expected_type, bool inline_when
 
         REWIND_LIST(curr);
 
+        unsigned i = 0;
         while (curr != NULL) {
-            // TODO: infer type based on type t
-            t_expr(curr->expr, NULL);
+            // Infer type at position of call based on the function's type parameter list
+            if (t && t->tag == FunPointer) {
+                t_expr(curr->expr, infer_type_funcall(t, i));
+            } else {
+                t_expr(curr->expr, NULL);
+            }
+
             if (curr->next != NULL)
                 p(",");
             curr = curr->next;
+
+            i += 1;
         }
 
         p(")");
@@ -1653,7 +1694,7 @@ struct Type *t_expr(struct Expr *x, struct Type *expected_type, bool inline_when
         }
         p(")");
 
-        t_initializer(x->compound_literal.init, (x->compound_literal.type == NULL) ? expected_type : x->compound_literal.type);
+        t_initializer(x->compound_literal.init, (x->compound_literal.type == NULL) ? expected_type : x->compound_literal.type, x->compound_literal.named_parameters);
 
         p(")");
 
@@ -1751,7 +1792,6 @@ struct Type *t_expr(struct Expr *x, struct Type *expected_type, bool inline_when
                                             x->source_line
                                         );
                                         return_type = inline_type;
-
                                 } else if (vars->decl->val->tag == Code) {
                                     constdata_inlined = true;
                                     constdata_inlined_value =
@@ -1784,9 +1824,43 @@ struct Type *t_expr(struct Expr *x, struct Type *expected_type, bool inline_when
             t_expr(constdata_inlined_value, return_type);
             p(")");
         } else if (is_constdata_access && !constdata_inlined) {
-            if (!constdata_inlined) {
-                p("_prec_internal_constdata_struct_%s_%s",
-                    type_name, x->struct_access_deref.member);
+            p("_prec_internal_constdata_struct_%s_%s",
+                type_name, x->struct_access_deref.member);
+            if (type_name != NULL) {
+                // complete type inference (pass down the type of the access as return_type)
+                // using the type table too
+
+                TypeTablePtr entry = fetch_type(type_table, type_name);
+
+                if (entry != NULL) {
+                    struct DeclarationList *decls = entry->constdata;
+
+                    bool found_var = false;
+
+                    if (decls != NULL) {
+                        REWIND_LIST(decls);
+                        while (!found_var && decls != NULL) {
+                            struct Type *type = decls->decl->type;
+                            struct VarList *vars = decls->decl->vars;
+
+                            assert(vars != NULL);
+                            REWIND_LIST(vars);
+                            while (!found_var && vars != NULL) {
+                                // fprintf(stderr, "checking %s", vars->decl->name);
+                                if (vars->decl->name != NULL && strcmp(vars->decl->name, x->struct_access_deref.member) == 0) {
+                                    found_var = true;
+                                    // fprintf(stderr, " match %s", t_str_type(type, NULL, false));
+                                    return_type = type;
+                                }
+                                // fprintf(stderr, "\n");
+
+                                vars = vars->next;
+                            }
+                            decls = decls->next;
+                        }
+                        // fprintf(stderr, "\n");
+                    }
+                }
             }
         } else {
             t = t_expr(x->struct_access_deref.e, NULL);
@@ -1879,6 +1953,8 @@ struct Type *t_expr(struct Expr *x, struct Type *expected_type, bool inline_when
         } else if (t && t->tag == Tuple) {
             type_name = type_id(t);
         }
+
+        struct Type *fun_type = NULL;
         
         if (type_name != NULL) {
             TypeTablePtr entry = fetch_type(type_table, type_name);
@@ -1900,6 +1976,7 @@ struct Type *t_expr(struct Expr *x, struct Type *expected_type, bool inline_when
                             p("_prec_internal_constdata_struct_%s_%s",
                                 type_name, x->struct_access_deref.member);
                             if (decl_type->tag == FunPointer) {
+                                fun_type = decls->decl->type;
                                 return_type = decls->decl->type->fun_pointer.return_type;
                             }
                         }
@@ -2009,12 +2086,21 @@ struct Type *t_expr(struct Expr *x, struct Type *expected_type, bool inline_when
             p(",");
 
             REWIND_LIST(curr);
+
+            unsigned i = 0;
             while (curr != NULL) {
-                // TODO: infer type based on type original_type
-                t_expr(curr->expr, NULL);
+                // Infer type at position of call based on the function's type parameter list
+                if (fun_type && fun_type->tag == FunPointer) {
+                    t_expr(curr->expr, infer_type_funcall(fun_type, i + 1));
+                } else {
+                    t_expr(curr->expr, NULL);
+                }
+
                 if (curr->next != NULL)
                     p(",");
                 curr = curr->next;
+
+                i += 1;
             }
 
         }
@@ -2593,7 +2679,7 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
                     p(" = ");
                 }
                 set_src(node->decl->val->source_line);
-                t_initializer(node->decl->val, decl->type);
+                t_initializer(node->decl->val, decl->type, NULL);
 
                 if (freeform) { p("; "); }
                 else          { p(";"); NEWLINE(); }
@@ -3039,15 +3125,21 @@ void t_statement(struct Statement *stat) {
             struct ArgumentExpressionList *loop_params = stat->j->loop_args;
             REWIND_LIST(signature_params);
             REWIND_LIST(loop_params);
+            unsigned i = 0;
             while (signature_params != NULL && loop_params != NULL) {
                 set_src(stat->source_line);
                 if (loop_params->expr != NULL && signature_params->param != NULL) {
                     if (signature_params->param->name != NULL) {
+
                         tabs();
                         p("%s = ", signature_params->param->name);
-                        // TODO: infer type based on type current_funtype
-                        // but it's probably not needed tbh
-                        t_expr(loop_params->expr, NULL);
+                        // Infer type at position of call based on the function's type parameter list
+                        if (current_funtype && current_funtype->tag == FunPointer) {
+                            t_expr(loop_params->expr, infer_type_funcall(current_funtype, i));
+                        } else {
+                            t_expr(loop_params->expr, NULL);
+                        }
+
                         p(";");
                         NEWLINE();
                     }
@@ -3055,6 +3147,8 @@ void t_statement(struct Statement *stat) {
 
                 loop_params = loop_params->next;
                 signature_params = signature_params->next;
+
+                i += 1;
             }
 
             set_src(stat->source_line);
