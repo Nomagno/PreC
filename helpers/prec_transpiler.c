@@ -121,7 +121,7 @@ struct BufferList *current_buffer;
 
 #define NEW_ACCESS(_e, _id, _source) DUP_T(Expr, StructAccess, .struct_access_deref = { .e = _e, .member = _id }, .source_line = _source)
 
-#define WRAP_BLOCK(_b) DUP_T(Statement, Block, .b = _b, .source_line = _b->source_line)
+#define WRAP_BLOCK(_b, _source) DUP_T(Statement, Block, .b = _b, .source_line = _source)
 
 #define GROUP(...) __VA_ARGS__
 
@@ -1275,7 +1275,7 @@ FunStart:
             p("static ");
         }
 
-        bool contains_loop = statement_contains_loop(WRAP_BLOCK(x->code));
+        bool contains_loop = statement_contains_loop(WRAP_BLOCK(x->code, x->source_line));
         if (contains_loop) {
             struct TypeParamList *params = t->fun_pointer.param_list;
             REWIND_LIST(params);
@@ -2637,7 +2637,7 @@ void t_declaration(struct Declaration *decl, bool freeform, bool top_level) {
 
                 bool contains_loop = false;
                 if (node->decl->val->code != NULL) {
-                    contains_loop = statement_contains_loop(WRAP_BLOCK(node->decl->val->code));
+                    contains_loop = statement_contains_loop(WRAP_BLOCK(node->decl->val->code, node->decl->val->source_line));
                 }
 
                 if (contains_loop) {

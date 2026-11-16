@@ -1,0 +1,27 @@
+c_include "stdio.h"
+
+type struct Vec2 = {
+    u32 x;
+    u32 y;
+} constdata {
+    struct Vec2 (&)(struct Vec2& self, struct Vec2& other, u32 (&)(u32 a, u32 b) op) perComponent = ${
+        return <struct Vec2>{
+            op(self.x, other.x),
+            op(self.y, other.y),
+        };
+    };
+    void (&)(struct Vec2& self) print = ${
+        printf("(%d, %d)", self.x, self.y);
+    };
+};
+
+i32 (&)(struct Vec2 x) a;
+
+i32 (&)(void) main = ${
+    struct Vec2 var = {3,5};
+    var
+        ..perComponent(&<>{3,5}, <>${return a+b;})
+        ..print();
+
+    var..print();
+};
