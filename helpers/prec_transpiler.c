@@ -54,16 +54,18 @@ SymPtr sym_table;
 TypeTablePtr type_table;
 
 void check_empty_tables(void) {
-    while (sym_table->next != NULL) {
-        //Verify all local types where removed
-        assert(sym_table->next->scope_level == 0);
-        sym_table = sym_table->next;
+    SymPtr sym_table_tmp = sym_table;
+    while (sym_table_tmp->next != NULL) {
+        //Verify all local symbols where removed
+        assert(sym_table_tmp->next->scope_level == 0);
+        sym_table_tmp = sym_table_tmp->next;
     }
 
-    while (type_table->next != NULL) {
-        //Verify all local symbols were removed
-        assert(type_table->next->scope_level == 0);
-        type_table = type_table->next;
+    TypeTablePtr type_table_tmp = type_table;
+    while (type_table_tmp->next != NULL) {
+        //Verify all local types were removed
+        assert(type_table_tmp->next->scope_level == 0);
+        type_table_tmp = type_table_tmp->next;
     }
 }
 
