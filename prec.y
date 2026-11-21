@@ -52,6 +52,7 @@
     struct LabeledStatement *labeled_stat;
     struct IterationStatement *iteration_stat;
     struct JumpStatement *jump_stat;
+    struct CDefineStatement *c_define_stat;
 
     struct Block *block;
     struct BlockList *block_list;
@@ -105,6 +106,8 @@
 %type <labeled_stat> labeled_statement
 %type <labeled_stat> labeled_statement_switch
 %type <selection_stat> selection_statement
+%type <identifier> c_include_statement
+%type <c_define_stat> c_define_statement
 
 %type <arg_list> argument_expression_list
 
@@ -138,7 +141,7 @@
 %token BOOL UPTR IPTR U8 I8 U16 I16 U32 I32 U64 I64 F32 F64 VOID
 %token EXTRACT STRUCT UNION T_UNION ENUM CONSTDATA UNIQUE LOCAL
 %token ELLIPSIS
-%token C_INCLUDE
+%token C_INCLUDE C_DEFINE
 
 %token ASSIGN_ADDITION
 
@@ -629,7 +632,24 @@ statement
 	    { $$ = DUP_T(Statement, Iteration, .i = $1); }
 	| jump_statement
 	    { $$ = DUP_T(Statement, Jump, .j = $1); }
+	| c_include_statement
+	    { $$ = DUP_T(Statement, CInclude, .c_include = $1); }
+	| c_define_statement
+	    { $$ = DUP_T(Statement, CDefine, .d = $1); }
 	;
+
+c_include_statement
+    : C_INCLUDE STRING_LITERAL
+	    { $$ = $2; }
+	;
+
+c_define_statement
+    : C_DEFINE IDENTIFIER ':' expression ';'
+        {$$ = DUP((struct CDefineStatement){ .parameters = NULL, .macro_name = $2, .macro_value = $4});}
+    | C_DEFINE IDENTIFIER '(' argument_expression_list ')' ':' expression ';'
+        {$$ = DUP((struct CDefineStatement){ .parameters = $4, .macro_name = $2, .macro_value = $7});}
+    ;
+
 
 labeled_statement_list
 	: labeled_statement
@@ -795,8 +815,6 @@ top_level_item
 	    { $$ = DUP_T(TopLevel, Decl, .decl = $2, .next = NULL); $$->decl->class = $1; }
 	| declaration ';'
 	    { $$ = DUP_T(TopLevel, Decl, .decl = $1, .next = NULL); }
-	| C_INCLUDE STRING_LITERAL
-	    { $$ = DUP_T(TopLevel, CInclude, .c_include = $2, .next = NULL); }
     ;
 
 translation_unit

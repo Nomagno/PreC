@@ -385,6 +385,8 @@ enum StatementType {
     Selection='s',
     Iteration='i',
     Jump='j',
+    CInclude='I',
+    CDefine='D',
 };
 
 struct Statement {
@@ -396,7 +398,17 @@ struct Statement {
         struct SelectionStatement *s;
         struct IterationStatement *i;
         struct JumpStatement *j;
+        char *c_include;
+        struct CDefineStatement *d;
     };
+    unsigned source_line;
+};
+
+struct CDefineStatement {
+    struct ArgumentExpressionList *parameters;
+    char *macro_name;
+    struct Expr *macro_value;
+    
     unsigned source_line;
 };
 
@@ -490,12 +502,11 @@ struct IterationStatement {
 
 // Top level node
 struct TopLevel {
-    enum {CInclude='c', TDef='t', Stat='s', Decl='d'} tag;
+    enum {TDef='t', Stat='s', Decl='d'} tag;
     union {
         struct TypeDefinition *tdef;
         struct Statement *stat;
         struct Declaration *decl;
-        char *c_include;
     };
     struct TopLevel *prev;
     struct TopLevel *next;

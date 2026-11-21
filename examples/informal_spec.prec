@@ -11,6 +11,14 @@
 //    - type casts <type>expression
 //    - compound literals <type> { ... }
 //    - function literals <type> ${ ... }
+//    - Inferred-type compound literals <>{...}  <>${...}
+
+// Supported if the underlying compiler supports it: static compound literals <static i32>{4}
+
+// Second order macros (but be warned, you lose the enhanced type system when you use them):
+// #define ADDER(F, X) c_define F(A): A+X
+// ADDER(PLUS5, 5);
+// PLUS5(7); // Compiles to: 5+7
 
 // backport from C29: declaration in if statement:
 //   if (int val = some_func; val >= 0)

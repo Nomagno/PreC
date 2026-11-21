@@ -65,6 +65,7 @@ int real_line_number = -1;
 
 
 "c_include"    { count(); return(C_INCLUDE); }
+"c_define"    { count(); return(C_DEFINE); }
 "bnot"		    { count(); return(NOT); }
 "band"		    { count(); return(AND); }
 "bxor"	    	{ count(); return(XOR); }

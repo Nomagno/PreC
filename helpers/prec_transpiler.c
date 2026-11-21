@@ -179,6 +179,8 @@ void destroy_buffer_list(struct BufferList *list) {
 
 bool dry_run = false;
 
+bool freeform;
+
 unsigned previous_source_line = 0;
 
 // Indicates the source line, if 0 then there's no source line.
@@ -232,7 +234,7 @@ extern bool disable_linetranslation;
 
 #define set_src(_source_line) { previous_source_line = source_line; source_line = _source_line; }
 
-#define NEWLINE() { p("\n"); newline_just_printed = true; }
+#define NEWLINE() { if (freeform == false) { p("\n"); newline_just_printed = true; } }
 
 #define INDENT_STR "  "
 void tabs(void) {
@@ -1109,6 +1111,10 @@ void t_block(struct Block *b, struct TypeParamList *param_list) {
 bool statement_contains_loop(struct Statement *stat) {
     if (!stat) return false;
     switch(stat->tag) {
+    case CDefine:
+        return false;
+    case CInclude:
+        return false;
     case Expression:
         return false;
     case Labeled:
@@ -2733,6 +2739,59 @@ char *concat(const char *x, const char *y) {
 void t_statement(struct Statement *stat) {
     set_src(stat->source_line);
     switch (stat->tag) {
+    case CInclude:
+        NEWLINE();
+        set_src(stat->source_line);
+        p("#include %s", stat->c_include);
+        NEWLINE();
+        break;
+    case CDefine:
+        NEWLINE();
+        bool saved_freeform = freeform;
+        freeform = true;
+
+        p("#define %s", stat->d->macro_name);
+        if (stat->d->parameters) {
+            p("(")
+            struct ArgumentExpressionList *curr = stat->d->parameters;
+            REWIND_LIST(curr);
+            while (curr != NULL) {
+                if (curr->expr == NULL)
+                    p("...")
+                else if (curr->expr->tag == Identifier)
+                    p("%s", curr->expr->identifier);
+
+                if (curr->next != NULL)
+                    p(",");
+                curr = curr->next;
+            }
+
+            p(")");
+        }
+
+        p(" ");
+
+        if (stat->d->macro_value) {
+            if (stat->d->macro_value->tag == CompoundLiteral) {
+                if (stat->d->macro_value->compound_literal.type == NULL
+                    && stat->d->macro_value->compound_literal.named_parameters == NULL
+                    && !stat->d->macro_value->compound_literal.is_static)
+                {
+                    if (stat->d->macro_value->compound_literal.init->tag == Code) {
+                        t_block(stat->d->macro_value->compound_literal.init->code, NULL);
+                    } else if (stat->d->macro_value->compound_literal.init->tag == Data){
+                        t_initializer(stat->d->macro_value->compound_literal.init, NULL, NULL);
+                    }
+                }
+            } else {
+                t_expr(stat->d->macro_value, NULL, true /*inline_when_possible*/);
+            }
+        }
+
+        freeform = saved_freeform;
+        set_src(stat->source_line);
+        NEWLINE();
+        break;
     case Block:
         t_block(stat->b, NULL);
         break;
@@ -3513,11 +3572,6 @@ void transpile(struct TopLevel *top) {
     REWIND_LIST(top_level_list);
     while (top_level_list != NULL) {
         switch (top_level_list->tag) {
-        case CInclude:
-            printf("\n#include %s", top_level_list->c_include);
-            printf("\n");
-            newline_just_printed = true;
-            break;
         case Stat:
             RESET_TRANSLATION_DATA();
 
