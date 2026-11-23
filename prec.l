@@ -88,6 +88,7 @@ int real_line_number = -1;
 "restrict"		{ count(); return(RESTRICT); }
 "return"		{ count(); return(RETURN); }
 "as"		    { count(); return(AS); }
+"countof"		{ count(); return(COUNTOF); }
 "sizeof"		{ count(); return(SIZEOF); }
 "tuple"		{ count(); return(TUPLE); }
 "typeof"		{ count(); return(TYPEOF); }

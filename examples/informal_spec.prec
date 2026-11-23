@@ -57,6 +57,20 @@
 // - First the typeof pass, then the other two passes
 
 // backport from C23: typeof operator (warning: it will be forwarded to the compiler if it can not be resolved because it involves C library-imported identifiers)
+// backport from C29: countof operator (wraning: it will NOT be forwarded to the compiler if it can not be resolved, it will give an error at compile time. Inject a C macro if you need to delegate to the C29 countof).
+
+// C macro injection, or C injection in general is a technique that is pretty PreC-only:
+// ------- IN your_injection_header.h (you can add a local stdint.h that includes the default stdint.h and adds more stuff to override PreC's 'prelude') ------
+//      #include <stdint.h>
+//      #define C29_COUNTOF countof
+//      uint64_t c_array[50];
+
+// ------- IN your preC code ------
+//      c_include "your_injection_header.h"
+//      #define countof C29_COUNTOF
+//      // declares an array of size 50 (though the PreC type system will not know the size statically).
+//      i32[countof(c_array)] arr;
+
 
 // switch statement auto-inserts ``break;'' at the end of each case.
 // cases and default REQUIRE braces (you can omit them if it's only one statement), can use ``fall"" to stop the break auto-inserting:

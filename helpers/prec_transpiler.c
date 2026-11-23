@@ -1415,9 +1415,27 @@ struct Type *t_expr(struct Expr *x, struct Type *expected_type, bool inline_when
     switch (x->tag) {
     case SizeofType:
         p("sizeof(");
-        p("%s", t_str_type(x->sizeof_type, NULL, false));
+        p("%s", t_str_type(x->sizeof_countof_type, NULL, false));
         p(")");
         break;
+    case CountofType: {
+        struct Type *type = x->sizeof_countof_type;
+        DISCARD_QUALIFIERS(type);
+        if (type == NULL) {
+            fprintf(stderr, "%s:%d:%d: Compiler error: Type for countof could not be inferred\n",
+                    FILENAME_GRACEFUL, x->source_line, 1);
+            exit(1);
+        } else if (type->tag != Array) {
+            fprintf(stderr, "%s:%d:%d: Compiler error: Type for countof is not an array\n",
+                    FILENAME_GRACEFUL, x->source_line, 1);
+            exit(1);
+        }
+
+        char *type_str = t_str_type(type, false, NULL);
+        p("(sizeof(%s)/sizeof((%s){0}[0]))", type_str, type_str);
+
+        break;
+    }
     case Unary:
         p("(");
         switch(x->unOp.tag) {
@@ -1426,6 +1444,27 @@ struct Type *t_expr(struct Expr *x, struct Type *expected_type, bool inline_when
             t_expr(x->unOp.e, NULL);
             p(")");
             break;
+        case Countof: {
+            bool saved_dr = dry_run;
+            dry_run = true;
+            struct Type *expr_type = t_expr(x->unOp.e, NULL);
+            dry_run = saved_dr;
+            DISCARD_QUALIFIERS(expr_type);
+            if (expr_type == NULL) {
+                fprintf(stderr, "%s:%d:%d: Compiler error: Type for countof could not be inferred\n",
+                        FILENAME_GRACEFUL, x->source_line, 1);
+                exit(1);
+            } else if (expr_type->tag != Array) {
+                fprintf(stderr, "%s:%d:%d: Compiler error: Type for countof is not an array\n",
+                        FILENAME_GRACEFUL, x->source_line, 1);
+                exit(1);
+            }
+
+            char *type_str = t_str_type(expr_type, false, NULL);
+            p("(sizeof(%s)/sizeof((%s){0}[0]))", type_str, type_str);
+
+            break;
+        }
         case Ref:
             DISCARD_QUALIFIERS(expected_type);
             if (expected_type && expected_type->tag == Reference) {
@@ -2132,6 +2171,8 @@ bool is_const_expr(struct Expr *x) {
 
     switch (x->tag) {
     case SizeofType:
+        return true;
+    case CountofType:
         return true;
     case Unary:
         return is_const_expr(x->unOp.e);

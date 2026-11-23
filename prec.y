@@ -133,7 +133,7 @@
 %token <uint_constant> UINT_CONSTANT
 %token <identifier> IDENTIFIER
 %token <string_literal> STRING_LITERAL
-%token SIZEOF TYPEOF TYPE TUPLE
+%token SIZEOF COUNTOF TYPEOF TYPE TUPLE
 %token PTR_METHOD_OP METHOD_OP PTR_OP LEFT_OP RIGHT_OP LE_OP GE_OP EQ_OP NE_OP
 %token AND_OP OR_OP
 
@@ -242,8 +242,12 @@ unary_expression
 	    { $$ = UN_EXPR(BoolNot, $2); }
 	| SIZEOF '(' expression ')'
 	    { $$ = UN_EXPR(Sizeof, $3); }
-	| SIZEOF '<' type '>'
-	    { $$ = DUP_T(Expr, SizeofType, .sizeof_type = $3); }
+	| SIZEOF '(' type ')'
+	    { $$ = DUP_T(Expr, SizeofType, .sizeof_countof_type = $3); }
+	| COUNTOF '(' expression ')'
+	    { $$ = UN_EXPR(Countof, $3); }
+	| COUNTOF '(' type ')'
+	    { $$ = DUP_T(Expr, CountofType, .sizeof_countof_type = $3); }
 	;
 
 cast_expression

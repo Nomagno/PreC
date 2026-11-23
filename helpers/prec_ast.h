@@ -53,6 +53,7 @@ enum BinOp {
 
 enum UnOp {
     Sizeof='s',
+    Countof='C',
     Ref='&',
     Deref='^',
     Neg='~',
@@ -62,6 +63,7 @@ enum UnOp {
 
 enum ExprType {
     SizeofType='t',
+    CountofType='C',
     Unary='u',
     Binary='b',
     FunctionCall='F',
@@ -103,7 +105,7 @@ struct Expr {
             struct Expr *e;
         } unOp;
 
-        struct Type *sizeof_type;
+        struct Type *sizeof_countof_type;
 
         struct {
             struct Type *type;
