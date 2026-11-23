@@ -537,6 +537,12 @@ char *type_id(struct Type *x) {
             while (node != NULL) {
                 assert(node->param != NULL);
 
+                bool is_impl = node->param->name && strcmp(node->param->name, "__impl__") == 0;
+                if (is_impl) {
+                    node = node->next;
+                    continue;
+                }
+
                 char *member_name = node->param->name;
                 if (member_name == NULL) {
                     // Unnamed tuple members get the name _0 if in first position, _1 if in second, etc.
@@ -715,14 +721,12 @@ char *register_tuple_if_needed(struct Type *x, bool *had_to_register) {
                 assert(node->param != NULL);
                 set_src(node->param->source_line);
 
-                bool is_impl = false;
+                bool is_impl = node->param->name && strcmp(node->param->name, "__impl__") == 0;
 
                 char *member_name = node->param->name;
                 if (member_name == NULL) {
                     // Unnamed tuple members get the name _0 if in first position, _1 if in second, etc.
                     asprintf(&member_name, "_%d", counter);
-                } else {
-                    is_impl = strcmp(member_name, "__impl__") == 0;
                 }
 
                 if (is_impl) {
@@ -752,13 +756,15 @@ char *register_tuple_if_needed(struct Type *x, bool *had_to_register) {
                         tuple_declaration->next = to_be_appended;
                         tuple_declaration = tuple_declaration->next;
                     }
+                    NEWLINE();
                 }
-
-                NEWLINE();
 
                 if (node->param->type)
                 node = node->next;
-                counter += 1;
+
+                if (!is_impl) {
+                    counter += 1;
+                }
             }
         }
 
@@ -788,14 +794,12 @@ char *register_tuple_if_needed(struct Type *x, bool *had_to_register) {
             assert(node->param != NULL);
             set_src(node->param->source_line);
 
-            bool is_impl = false;
+            bool is_impl = node->param->name && strcmp(node->param->name, "__impl__") == 0;
 
             char *member_name = node->param->name;
             if (member_name == NULL) {
                 // Unnamed tuple members get the name _0 if in first position, _1 if in second, etc.
                 asprintf(&member_name, "_%d", counter);
-            } else {
-                is_impl = strcmp(member_name, "__impl__") == 0;
             }
 
             if (is_impl) {
@@ -810,7 +814,10 @@ char *register_tuple_if_needed(struct Type *x, bool *had_to_register) {
 
             if (node->param->type)
             node = node->next;
-            counter += 1;
+
+            if (!is_impl) {
+                counter += 1;
+            }
         }
         set_src(x->source_line);
 
@@ -1182,7 +1189,7 @@ bool statement_contains_loop(struct Statement *stat) {
 // u32 a = {(u32){0}}; -> t_initializer({t_initializer()}, NULL);
 // This is needed to translate function literals, as ${...} by itself can not be compiled
 // without a **direct** inferrence type provided, and will result in a compilation error.
-// the named parameters override the names of the type, IF the type is a function pointer type
+// TODO: the named parameters override the names of the type, IF the type is a function pointer type
 void t_initializer(struct Initializer *x, struct Type *t, struct TypeParamList *named_parameters) {
     enum InitializerSort tag = x->tag;
     
